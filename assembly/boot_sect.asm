@@ -10,6 +10,8 @@ mov [BOOT_DRIVE], dl ; BIOS stores boot drive in dl. Store into memory.
 mov ax, 2403h
 int 15h
 
+call get_memory_info
+
 mov bx, KERNEL_OFFSET ; Address in memory to load to
 mov dh, 50 ; Load 50 sectors
 mov dl, [BOOT_DRIVE] ; Load from boot drive
@@ -22,6 +24,7 @@ BOOT_DRIVE:
 	db 0
 
 %include "print_string.asm"
+%include "memory.asm"
 %include "disk.asm"
 %include "gdt.asm"
 %include "32protected.asm"

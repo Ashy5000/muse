@@ -7,9 +7,6 @@ boot_sect.bin: assembly/
 %.o: %.c
 	$(HOME)/opt/cross/bin/i686-elf-gcc -ffreestanding -c $< -o $@ -Os
 
-kernel_entry.o: kernel_entry.c
-	$(HOME)/opt/cross/bin/i686-elf-gcc -ffreestanding -c $< -o $@ -Os
-
 kernel.bin: kernel_entry.o ${OBJS}
 	$(HOME)/opt/cross/bin/i686-elf-ld -o $@ -Ttext 0x1000 $^ $(HOME)/opt/cross/lib/gcc/x86_64-elf/15.2.0/libgcc.a --oformat binary --entry main
 

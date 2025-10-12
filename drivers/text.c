@@ -56,3 +56,25 @@ void kprint_hex(char *data, int len) {
 		kput_char(bin_to_hex(data[i] & 0xf));
 	}
 }
+
+int nth_digit(int x, int digit) {
+	for (int i = 0; i < digit; i++) {
+		x /= 10;
+	}
+	x %= 10;
+	return x;
+}
+
+void kprint_int(int x) {
+	int found_nonzero = 0;
+	for(int i = 0; i <= 9; i++) {
+		int digit = nth_digit(x, 9 - i);
+		if (digit != 0) {
+			found_nonzero = 1;
+		}
+		if (found_nonzero) {
+			kput_char('0' + digit);
+		}
+	}
+	kput_char('\n');
+}

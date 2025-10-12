@@ -1,47 +1,74 @@
 #include "memory.h"
+#include "../drivers/text.h"
 
-struct block_header {
-	void *data;
-	long size;
-	unsigned int free;
-};
-
-void *MEM_START = (void*)0x100000;
-
-struct block_header *get_header(void *block) {
-	return ((struct block_header*) block);
+void kmemcpy(void *dst, void *src, unsigned long bytes) {
+	for (int i = 0; i < bytes; i++) {
+		((char*)dst)[i] = ((char*)src)[i];
+	}
 }
 
+struct block_header {
+	int size;
+	int free; // 0 = in use, 1 = free, 2 = end of memory
+};
+
+void *MEM_START;
+
+void *mmap_table = (void*)0x0504;
+
 void init_memory(void) {
-	struct block_header *first_header = get_header(MEM_START);
-	first_header->data = MEM_START + sizeof(struct block_header);
-	first_header->size = 100;
-	first_header->free = 1;
+	int entry_count = *(int*)0x0500;
+	kprint("Entry count: ");
+	kprint_int(entry_count);
+	for (int i = 0; i < entry_count; i++) {
+		if (*((int*)(mmap_table + sizeof(int) * 6 * i + 4 * sizeof(int))) == 1) {
+			kprint("Free memory detected!");
+			struct block_header *header = *((struct block_header**)(mmap_table + sizeof(int) * 6 * i));
+			header->size = *((int*)(mmap_table + sizeof(int) * 6 * i + sizeof(int) * 2)) - sizeof(struct block_header);
+			header->free = 1;
+			struct block_header *header_last = header + header->size;
+			header_last->size = 0;
+			header_last->free = 2;
+			MEM_START = header;
+		}
+	}
+}
+
+void fuse_blocks(struct block_header *header) {
+	struct block_header *header_next = (void*)header + sizeof(struct block_header) + header->size;
+	if (header_next->free == 1 || header_next->free == 3) {
+		header->size += sizeof(struct block_header) + header_next->size;
+	}
+	header->free = 1;
 }
 
 void *kmalloc(long size) {
 	void *block = MEM_START;
 	struct block_header *header;
 	while(1) {
-		header = get_header(block);
+		header = block;
+		if (header->free == 2) {
+			return 0;
+		}
+		if (header->free == 1) {
+			fuse_blocks(header);
+		}
 		if (header->size >= size && header->free) {
 			if (header->size - size > sizeof(struct block_header)) {
-				struct block_header *new_header = get_header(block + size);
+				struct block_header *new_header = block + size + sizeof(struct block_header);
 				new_header->size = header->size - size - sizeof(struct block_header);
 				new_header->free = 1;
-				new_header->data = header->data + header->size - new_header->size;
 			}
 			header->size = size;
 			header->free = 0;
-			return header->data;
+			return (void*)header + sizeof(struct block_header);
 		} else {
 			block += header->size + sizeof(struct block_header);
 		}
 	}
 }
 
-void kmemcpy(void *dst, void *src, unsigned long bytes) {
-	for (int i = 0; i < bytes; i++) {
-		((char*)dst)[i] = ((char*)src)[i];
-	}
+void kfree(void *ptr) {
+	struct block_header *header = ptr - sizeof(struct block_header);
+	header->free = 1;
 }

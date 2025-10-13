@@ -1,6 +1,7 @@
 #include "interrupts.h"
 #include "io.h"
 #include "../drivers/text.h"
+#include "../drivers/keyboard.h"
 
 #include <stdint.h>
 
@@ -29,16 +30,6 @@ void handle_exception(void) {
 	__asm__ volatile ("cli; hlt");
 }
 
-void handle_exception_special(void) {
-	kprint("\n\n\nSpecial exception: kernel will exit.\n");
-	__asm__ volatile ("cli; hlt");
-}
-
-void handle_irq(void) {
-	outb(0x20, 0x20);
-	outb(0xa0, 0x20);
-}
-
 void *isrs[ISR_COUNT];
 
 void idt_set_entry(int vector, void *isr) {
@@ -54,9 +45,7 @@ void init_idt(void) {
 	for (int i = 0; i < 32; i++) {
 		isrs[i] = handle_exception;
 	}
-	for (int i = 32; i < 256; i++) {
-		isrs[i] = handle_irq;
-	}
+	isrs[0x21] = handle_keypress;
 
 	idtr_inst.base = (uintptr_t)idt;
 	idtr_inst.limit = (uintptr_t)(sizeof(struct idt_entry)) * ISR_COUNT - 1;
@@ -66,5 +55,5 @@ void init_idt(void) {
 	}
 
 	__asm__ volatile ("lidt %0" : : "m"(idtr_inst)); // Load IDT register
-	__asm__ volatile ("sti"); // Enable interrupts
+	__asm__ volatile ("sti");
 }

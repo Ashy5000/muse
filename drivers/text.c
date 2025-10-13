@@ -10,19 +10,21 @@ struct vga_cursor kcursor;
 
 char *video_memory = (char*) 0xb8000;
 
-void kscroll() {
+void init_console(void) {
+	for (int i = 0; i < 80 * 25; i++) {
+		video_memory[i * 2] = 0;
+	}
+}
+
+void kscroll(void) {
 	kmemcpy(video_memory, video_memory + 80 * 2, 80 * 2 * 24);
 	for (int i = 0; i < 80; i++) {
-		video_memory[80 * 2 * 24 + i] = 0;
+		video_memory[80 * 2 * 24 + i * 2] = 0;
 	}
 }
 
 void kput_char(char c) {
 	if (c == '\n') {
-		while (kcursor.x < 79) {
-			video_memory[(kcursor.y * 80 + kcursor.x) * 2] = 0;
-			kcursor.x++;
-		}
 		kcursor.x = 0;
 		if (kcursor.y < 24) {
 			kcursor.y++;
@@ -32,7 +34,11 @@ void kput_char(char c) {
 		return;
 	}
 	video_memory[(kcursor.y * 80 + kcursor.x) * 2] = c;
-	kcursor.x++;
+	if (kcursor.x < 79) {
+		kcursor.x++;
+	} else {
+		kput_char('\n');
+	}
 }
 
 void kprint(const char *str) {

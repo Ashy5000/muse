@@ -4,9 +4,12 @@
 #include "../drivers/text.h"
 
 int main() {
+	init_console();
 	init_memory();
 	init_pic();
 	init_idt();
 
-	while (1) {}
+	for(;;) {
+		__asm__("hlt");
+	}
 }

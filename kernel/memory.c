@@ -22,7 +22,7 @@ void init_memory(void) {
 	kprint_int(entry_count);
 	for (int i = 0; i < entry_count; i++) {
 		if (*((int*)(mmap_table + sizeof(int) * 6 * i + 4 * sizeof(int))) == 1) {
-			kprint("Free memory detected!");
+			kprint("Free memory detected!\n");
 			struct block_header *header = *((struct block_header**)(mmap_table + sizeof(int) * 6 * i));
 			header->size = *((int*)(mmap_table + sizeof(int) * 6 * i + sizeof(int) * 2)) - sizeof(struct block_header);
 			header->free = 1;

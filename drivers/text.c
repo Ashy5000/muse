@@ -23,6 +23,19 @@ void kscroll(void) {
 	}
 }
 
+void kdel_char(void) {
+	if (kcursor.x > 0) {
+		kcursor.x--;
+	} else {
+		if (kcursor.y == 0) {
+			return;
+		}
+		kcursor.x = 79;
+		kcursor.y--;
+	}
+	video_memory[(kcursor.y * 80 + kcursor.x) * 2] = 0;
+}
+
 void kput_char(char c) {
 	if (c == '\n') {
 		kcursor.x = 0;

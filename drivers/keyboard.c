@@ -3,7 +3,9 @@
 
 #include <stdbool.h>
 
-unsigned char keycode_to_char(unsigned char keycode) {
+int shift_held = 0;
+
+unsigned char keycode_to_char_lower(unsigned char keycode) {
 	switch (keycode) {
 		case 0x01: return 0; // Escape
 		case 0x02: return '1';
@@ -18,7 +20,7 @@ unsigned char keycode_to_char(unsigned char keycode) {
 		case 0x0B: return '0';
 		case 0x0C: return '-';
 		case 0x0D: return '=';
-		case 0x0E: return 0; // Backspace
+		case 0x0E: return 255; // Backspace
 		case 0x0F: return '	';
 		case 0x10: return 'q';
 		case 0x11: return 'w';
@@ -46,7 +48,9 @@ unsigned char keycode_to_char(unsigned char keycode) {
 		case 0x27: return ';';
 		case 0x28: return '\'';
 		case 0x29: return '`';
-		case 0x2A: return 0; // Left shift
+		case 0x2A: // Left shift pressed
+			   shift_held++;
+			   return 0;
 		case 0x2B: return '\\';
 		case 0x2C: return 'z';
 		case 0x2D: return 'x';
@@ -58,9 +62,54 @@ unsigned char keycode_to_char(unsigned char keycode) {
 		case 0x33: return ',';
 		case 0x34: return '.';
 		case 0x35: return '/';
-		case 0x36: return 0; // Right shift
+		case 0x36:
+			   // Right shift pressed
+			   shift_held++;
+			   return 0;
 		case 0x39: return ' ';
+		case 0xAA:
+			   // Left shift released
+			   shift_held--;
+			   return 0;
+		case 0xB6:
+			   // Right shift released
+			   shift_held--;
+			   return 0;
 		default: return 0;
+	}
+}
+
+unsigned char keycode_to_char(unsigned char keycode) {
+	unsigned char lower = keycode_to_char_lower(keycode);
+	if (shift_held == 0) {
+		return lower;
+	}
+	if (lower >= 'a' && lower <= 'z') {
+		return lower + ('A' - 'a');
+	}
+	switch (lower) {
+		case '`': return '~';
+		case '1': return '!';
+		case '2': return '@';
+		case '3': return '#';
+		case '4': return '$';
+		case '5': return '%';
+		case '6': return '^';
+		case '7': return '&';
+		case '8': return '*';
+		case '9': return '(';
+		case '0': return ')';
+		case '-': return '_';
+		case '=': return '+';
+		case '[': return '{';
+		case ']': return '}';
+		case '\\': return '|';
+		case ';': return ':';
+		case '\'': return '"';
+		case ',': return '<';
+		case '.': return '>';
+		case '/': return '?';
+		default: return lower;
 	}
 }
 
@@ -75,7 +124,9 @@ void handle_keypress(void) {
 	io_wait();
 	unsigned char scan_code = inb(0x60);
 	unsigned char character = keycode_to_char(scan_code);
-	if (character != 0) {
+	if (character == 255) {
+		kdel_char();
+	} else if (character != 0) {
 		kput_char(character);
 	}
 	__asm__ volatile ("sti");

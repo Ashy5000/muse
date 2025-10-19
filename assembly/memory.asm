@@ -25,6 +25,8 @@ memory_loop:
 	jcxz memory_skip ; Skip this entry of ECX is equal to zero (zero length entry)
 	cmp cl, 20 ; Is the response length less than or equal to 20 bytes?
 	jbe memory_short_entry
+	test byte [es:di + 20], 1 ; Should it be ignored?
+	je memory_skip
 memory_short_entry:
 	mov eax, [es:di + 8] ; Get lower 32 bits of length
 	or eax, [es:di + 12] ; Or it with the upper 32 bits

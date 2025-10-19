@@ -76,24 +76,31 @@ void kprint_hex(char *data, int len) {
 	}
 }
 
-int nth_digit(int x, int digit) {
+int nth_digit(int x, int digit, int base) {
 	for (int i = 0; i < digit; i++) {
-		x /= 10;
+		x /= base;
 	}
-	x %= 10;
+	x %= base;
 	return x;
 }
 
-void kprint_int(int x) {
+void kprint_int(int x, int base) {
+	if (x == 0) {
+		kput_char('0');
+		return;
+	}
 	int found_nonzero = 0;
-	for(int i = 0; i <= 9; i++) {
-		int digit = nth_digit(x, 9 - i);
+	for(int i = 0; i < base; i++) {
+		int digit = nth_digit(x, base - 1 - i, base);
 		if (digit != 0) {
 			found_nonzero = 1;
 		}
 		if (found_nonzero) {
-			kput_char('0' + digit);
+			if (digit < 10) {
+				kput_char('0' + digit);
+			} else {
+				kput_char('A' + digit - 10);
+			}
 		}
 	}
-	kput_char('\n');
 }

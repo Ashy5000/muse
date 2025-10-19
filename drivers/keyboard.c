@@ -115,7 +115,7 @@ unsigned char keycode_to_char(unsigned char keycode) {
 
 bool keyboard_locked = false;
 
-void handle_keypress(void) {
+void handle_keypress_inner(void) {
 	while (keyboard_locked) {}
 	keyboard_locked = true;
 	outb(0x20, 0x20);
@@ -129,6 +129,15 @@ void handle_keypress(void) {
 	} else if (character != 0) {
 		kput_char(character);
 	}
-	__asm__ volatile ("sti");
 	keyboard_locked = false;
 }
+
+__asm__ (
+	".globl handle_keypress;"
+	"handle_keypress:;"
+	"pushal;"
+	"cld;"
+	"call handle_keypress_inner;"
+	"popal;"
+	"iret;"
+);

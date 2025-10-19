@@ -6,8 +6,8 @@
 int main() {
 	init_console();
 	init_memory();
-	init_pic();
-	init_idt();
+	// init_pic();
+	// init_idt();
 
 	for(;;) {
 		__asm__("hlt");

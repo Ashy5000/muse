@@ -44,5 +44,4 @@ void init_pic(void) {
 	io_wait();
 	outb(PIC1_DATA, 0xFD);
 	outb(PIC2_DATA, 0xFF);
-	
 }

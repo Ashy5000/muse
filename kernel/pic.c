@@ -1,5 +1,6 @@
 #include "pic.h"
 #include "io.h"
+#include "../drivers/text.h"
 
 #define PIC1 0x20
 #define PIC2 0xA0
@@ -44,4 +45,5 @@ void init_pic(void) {
 	io_wait();
 	outb(PIC1_DATA, 0xFD);
 	outb(PIC2_DATA, 0xFF);
+	kprint("PIC initialized.\n");
 }

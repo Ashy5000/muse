@@ -67,7 +67,7 @@ void *kpage_alloc() {
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		uint32_t num_bitmaps = *((uint32_t*)(uintptr_t)mmap_table[i].addr_low);
 		uint32_t addr = (uint32_t)(uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
-		addr -= PAGE_SIZE - (addr % PAGE_SIZE);
+		addr += PAGE_SIZE - (addr % PAGE_SIZE);
 		for (uint32_t j = 0; j < num_bitmaps; j++) {
 			uint32_t *bitmap = ((uint32_t*)(uintptr_t)mmap_table[i].addr_low + 1 + j);
 			for (uint32_t k = 0; k < 32; k++) {
@@ -91,9 +91,6 @@ void init_memory(void) {
 	
 	kprint("MEMORY STAGE I BEGIN\n");
 
-	uintptr_t first_free_start = (uintptr_t)(mmap_table + *entry_count); // Start at the end of the table
-	uintptr_t first_free_end = first_illegal_address(*entry_count); // Extend as far as we can
-	
 	*entry_count = erase_unusable_regions(*entry_count);
 
 	kprint("Found ");
@@ -116,7 +113,8 @@ void init_memory(void) {
 		uint32_t size_aligned = size - (addr - addr_aligned);
 		uint32_t max_pages = size_aligned / PAGE_SIZE;
 
-		for (uint32_t j = 0; j < max_pages; j += sizeof(uint32_t) * 8) {
+		uint32_t j = 0;
+		for (; j < max_pages; j += sizeof(uint32_t) * 8) {
 			*((uint32_t*)(uintptr_t)addr + j + 1) = 0; // 0 = free, 1 = used
 			bitmaps_written++;
 			kput_char('#');
@@ -127,7 +125,7 @@ void init_memory(void) {
 			max_pages = size_aligned / PAGE_SIZE;
 		}
 
-		*((uint32_t*)(uintptr_t)mmap_table[i].addr_low) = max_pages;
+		*((uint32_t*)(uintptr_t)mmap_table[i].addr_low) = j + 1;
 	}
 
 	kprint("\nWrote ");
@@ -141,6 +139,9 @@ void init_memory(void) {
 
 	init_paging();
 
+	// STAGE IV
+	// OBJECTIVE: Set up virtual memory allocation
+	
 	kprint("Memory initialization complete.\n");
 }
 

@@ -140,4 +140,5 @@ __asm__ (
 	"call handle_keypress_inner;"
 	"popal;"
 	"iret;"
+	"hlt;"
 );

@@ -76,12 +76,11 @@ void kprint_hex(char *data, int len) {
 	}
 }
 
-int nth_digit(int x, int digit, int base) {
+unsigned int nth_digit(unsigned int x, unsigned int digit, unsigned int base) {
 	for (int i = 0; i < digit; i++) {
 		x /= base;
 	}
-	x %= base;
-	return x;
+	return x % base;
 }
 
 void kprint_int(int x, int base) {
@@ -91,7 +90,7 @@ void kprint_int(int x, int base) {
 	}
 	int found_nonzero = 0;
 	for(int i = 0; i < base; i++) {
-		int digit = nth_digit(x, base - 1 - i, base);
+		unsigned int digit = nth_digit(x, base - 1 - i, base);
 		if (digit != 0) {
 			found_nonzero = 1;
 		}

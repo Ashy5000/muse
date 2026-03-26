@@ -1,53 +1,23 @@
 #include "memory.h"
 #include "../drivers/text.h"
 #include "paging.h"
+#include "context.h"
 
-#include <stdint.h>
 #include <stdbool.h>
 
-void kmemcpy(void *dst, void *src, unsigned long bytes) {
-	for (int i = 0; i < bytes; i++) {
+void kmemcpy(void *dst, void *src, mem_t size) {
+	for (int i = 0; i < size; i++) {
 		((char*)dst)[i] = ((char*)src)[i];
 	}
 }
 
 struct block_header {
-	int size;
-	int free; // 0 = in use, 1 = free, 2 = end of memory
-};
-
-void *MEM_START;
-
-struct __attribute__ ((packed)) smap_entry {
-	uint32_t addr_low;
-	uint32_t addr_high;
-	uint32_t size_low;
-	uint32_t size_high;
-	uint32_t type;
-	uint32_t acpi;
+	mem_t size;
+	mem_t free; // 0 = in use, 1 = free, 2 = end of memory
 };
 
 struct smap_entry *mmap_table = (struct smap_entry*)0x0504;
 uint32_t *entry_count = (uint32_t*)0x0500;
-
-uintptr_t first_illegal_address(int entry_count) {
-	uintptr_t lowest_illegal_address = -1;
-
-	for (int i = 0; i < entry_count; i++) {
-		uintptr_t addr = mmap_table[i].addr_low;
-		uintptr_t size = mmap_table[i].size_low;
-
-		if (mmap_table[i].type == 1) {
-			if (i == 0 || addr + size < lowest_illegal_address) {
-				lowest_illegal_address = addr + size;
-			}
-		} else if (i == 0 || addr < lowest_illegal_address) {
-			lowest_illegal_address = addr;
-		}
-	}
-	
-	return lowest_illegal_address;
-}
 
 uint32_t erase_unusable_regions(uint32_t entry_count) {
 	uint32_t entry_count_new = entry_count;
@@ -66,7 +36,7 @@ uint32_t erase_unusable_regions(uint32_t entry_count) {
 void *kpage_alloc() {
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		uint32_t num_bitmaps = *((uint32_t*)(uintptr_t)mmap_table[i].addr_low);
-		uint32_t addr = (uint32_t)(uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
+		mem_t addr = (uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
 		addr += PAGE_SIZE - (addr % PAGE_SIZE);
 		for (uint32_t j = 0; j < num_bitmaps; j++) {
 			uint32_t *bitmap = ((uint32_t*)(uintptr_t)mmap_table[i].addr_low + 1 + j);
@@ -79,16 +49,18 @@ void *kpage_alloc() {
 			}
 		}
 	}
+	kprint("Out of memory!");
+	__asm__ volatile ("hlt");
 	return 0;
 }
 
-void init_memory(void) {
+void init_memory(struct context *ctx) {
 
 	kprint("Memory initialization starting...\n");
 
 	// STAGE I
 	// OBJECTIVE: Find the first free region. Remove all non-free regions.
-	
+
 	kprint("MEMORY STAGE I BEGIN\n");
 
 	*entry_count = erase_unusable_regions(*entry_count);
@@ -99,7 +71,7 @@ void init_memory(void) {
 
 	// STAGE II
 	// OBJECTIVE: Create bitmaps at the start of each free region
-	
+
 	kprint("MEMORY STAGE II BEGIN\n");
 
 	kprint("Writing bitmaps: ");
@@ -107,16 +79,19 @@ void init_memory(void) {
 	uint32_t bitmaps_written = 0;
 
 	for (uint32_t i = 0; i < *entry_count; i++) {
-		uint32_t addr = mmap_table[i].addr_low + sizeof(uint32_t);
-		uint32_t size = mmap_table[i].size_low - sizeof(uint32_t);
+		mem_t addr = mmap_table[i].addr_low
+			+ sizeof(uint32_t);
+		mem_t size = mmap_table[i].size_low
+			- sizeof(uint32_t);
 		uint32_t addr_aligned = addr - PAGE_SIZE + (addr % PAGE_SIZE);
 		uint32_t size_aligned = size - (addr - addr_aligned);
 		uint32_t max_pages = size_aligned / PAGE_SIZE;
 
-		uint32_t j = 0;
-		for (; j < max_pages; j += sizeof(uint32_t) * 8) {
+		uint32_t bitmaps_in_entry = 0;
+		for (uint32_t j = 0; j < max_pages; j += sizeof(uint32_t) * 8) {
 			*((uint32_t*)(uintptr_t)addr + j + 1) = 0; // 0 = free, 1 = used
 			bitmaps_written++;
+			bitmaps_in_entry++;
 			kput_char('#');
 			addr += sizeof(uint32_t);
 			size -= sizeof(uint32_t);
@@ -125,23 +100,33 @@ void init_memory(void) {
 			max_pages = size_aligned / PAGE_SIZE;
 		}
 
-		*((uint32_t*)(uintptr_t)mmap_table[i].addr_low) = j + 1;
+		*((uint32_t*)(uintptr_t)mmap_table[0].addr_low) = bitmaps_in_entry & 0xffffffff;
 	}
 
 	kprint("\nWrote ");
 	kprint_int(bitmaps_written, 10);
-	kprint(" bitmaps.\n");
+	kprint(" bitmaps to 0x");
+	kprint_int(mmap_table[0].addr_low, 16);
+	kprint(".\n");
 
 	// STAGE III
-	// OBJECTIVE: Create page structure
-	
+	// OBJECTIVE: Intialize paging
+
 	kprint("MEMORY STAGE III BEGIN\n");
 
-	init_paging();
+	ctx->page_directory = init_paging();
 
 	// STAGE IV
-	// OBJECTIVE: Set up virtual memory allocation
-	
+	// OBJECTIVE: Set up kernel heap
+
+	kprint("MEMORY STAGE IV BEGIN\n");
+	kprint("Writing header...\n");
+
+	ctx->heap = (void*)0x3001;
+	struct block_header *header = ctx->heap;
+	header->free = 1;
+	header->size = 0x10000;
+
 	kprint("Memory initialization complete.\n");
 }
 
@@ -153,8 +138,8 @@ void fuse_blocks(struct block_header *header) {
 	header->free = 1;
 }
 
-void *kmalloc(long size) {
-	void *block = MEM_START;
+void *vmalloc(vaddr_t size, uint32_t flags, struct context ctx) {
+	void *block = ctx.heap;
 	struct block_header *header;
 	while(1) {
 		header = block;
@@ -167,16 +152,85 @@ void *kmalloc(long size) {
 		if (header->size >= size && header->free) {
 			if (header->size - size > sizeof(struct block_header)) {
 				struct block_header *new_header = block + size + sizeof(struct block_header);
+				vaddr_t page_start = (uintptr_t)new_header - ((uintptr_t)new_header % PAGE_SIZE);
+				if (!check_page_status(page_start)) {
+					map_page(page_start, (uintptr_t)kpage_alloc(), flags);
+				}
 				new_header->size = header->size - size - sizeof(struct block_header);
 				new_header->free = 1;
 			}
 			header->size = size;
 			header->free = 0;
-			return (void*)header + sizeof(struct block_header);
+			vaddr_t begin = (uintptr_t)header + sizeof(struct block_header);
+			return (void*)(uintptr_t)begin;
 		} else {
 			block += header->size + sizeof(struct block_header);
 		}
 	}
+}
+
+void *vmalloc_page(uint32_t flags, struct context ctx) {
+	void *block = ctx.heap;
+	struct block_header *header;
+	while(1) {
+		header = block;
+		if (header->free == 2) {
+			return 0;
+		}
+		if (header->free == 1) {
+			fuse_blocks(header);
+		}
+		vaddr_t page_start = (uintptr_t)block + PAGE_SIZE - ((uintptr_t)block % PAGE_SIZE);
+		vaddr_t page_end = page_start + PAGE_SIZE;
+		vaddr_t header_start = page_start - sizeof(struct block_header);
+		while (header_start < (uintptr_t)block + sizeof(struct block_header)) {
+			page_start += PAGE_SIZE;
+			page_end += PAGE_SIZE;
+			header_start += PAGE_SIZE;
+		}
+		if (page_end <= (uintptr_t)block + sizeof(struct block_header) + header->size && header->free) {
+			vaddr_t header_page_start = header_start - (header_start % PAGE_SIZE);
+			if (!check_page_status(header_page_start)) {
+				map_page(header_page_start, (uintptr_t)kpage_alloc(), flags);
+			}
+			if (!check_page_status(page_start)) {
+				map_page(page_start, (uintptr_t)kpage_alloc(), flags);
+			}
+			header->size = header_start - (uintptr_t)block + sizeof(struct block_header);
+			struct block_header *page_header = (struct block_header*)(uintptr_t)header_start;
+			page_header->free = 0;
+			page_header->size = PAGE_SIZE;
+			struct block_header *excess_header = (struct block_header*)((uintptr_t)page_header + sizeof(struct block_header) + PAGE_SIZE);
+			vaddr_t excess_page = (uintptr_t)excess_header - ((uintptr_t)excess_header % PAGE_SIZE);
+			if ((uintptr_t)(excess_header + 1) < (uintptr_t)header + header->size) {
+				if (!check_page_status(excess_page)) {
+					map_page(excess_page, (uintptr_t)kpage_alloc(), flags);
+				}
+				excess_header->size = (uintptr_t)header + header->size - (uintptr_t)excess_header;
+				excess_header->free = 1;
+			}
+			return (void*)(uintptr_t)page_start;
+		} else {
+			block += header->size + sizeof(struct block_header);
+		}
+	}
+}
+
+void *kmalloc(vaddr_t size, uint32_t flags, struct context ctx) {
+	vaddr_t begin = (uintptr_t)vmalloc(size, flags, ctx);
+	vaddr_t end = begin + size;
+	vaddr_t begin_aligned = begin - (begin % PAGE_SIZE);
+	vaddr_t end_aligned = end + (PAGE_SIZE - (end % PAGE_SIZE));
+	uint32_t page_count = (end_aligned - begin_aligned) / PAGE_SIZE;
+	vaddr_t page_vaddr = begin_aligned;
+	while (page_vaddr < end_aligned - PAGE_SIZE) {
+		if (!check_page_status(page_vaddr)) {
+			kprint("Mapping page...");
+			map_page(page_vaddr, (uintptr_t)kpage_alloc(), flags);
+		}
+		page_vaddr += PAGE_SIZE;
+	}
+	return (void*)(uintptr_t)begin;
 }
 
 void kfree(void *ptr) {

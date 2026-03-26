@@ -1,9 +1,10 @@
 #include "interrupts.h"
-#include "io.h"
 #include "../drivers/text.h"
 #include "../drivers/keyboard.h"
 
 #include <stdint.h>
+
+extern void handle_page_fault(void);
 
 #define ISR_COUNT 256
 
@@ -46,6 +47,7 @@ void init_idt(void) {
 		isrs[i] = handle_exception;
 	}
 	isrs[0x21] = handle_keypress;
+	isrs[0x0E] = handle_page_fault;
 
 	idtr_inst.base = (uintptr_t)idt;
 	idtr_inst.limit = (uintptr_t)(sizeof(struct idt_entry)) * ISR_COUNT - 1;

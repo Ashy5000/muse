@@ -1,0 +1,4 @@
+floppya: 1_44="disk.bin", status=inserted
+boot:floppy
+display_library: x, options="gui_debug"
+magic_break: enabled=1

@@ -15,8 +15,9 @@ extern struct context contexts[32];
 int main() {
 	init_console();
 	init_pic();
-	init_memory(&contexts[active_context]);
 	init_idt();
+	init_memory(&contexts[active_context]);
+	// kprint("TEST");
 
 	// vaddr_t phys_addr = (uintptr_t)kpage_alloc();
 	// paddr_t virt_addr = 0x1000000;

@@ -33,14 +33,14 @@ bool check_table_structure(uint32_t *directory, vaddr_t addr) {
 	return is_present(directory[index]);
 }
 
-uint32_t *check_or_insert_table_structure(uint32_t *directory, vaddr_t vaddr) {
+uint32_t check_or_insert_table_structure(uint32_t *directory, vaddr_t vaddr) {
 	uint32_t index = vaddr >> 22;
 	if (is_present(directory[index])) {
-		return (uint32_t*)(uintptr_t)(directory[index] & ADDR_MASK);
+		return index;
 	}
 	uint32_t *table = kpage_alloc();
 	directory[index] = set_present(set_writeable(set_page(0, (uintptr_t)table), true), true);
-	return table;
+	return index;
 }
 
 bool check_page_structure(uint32_t *table, vaddr_t addr) {
@@ -59,8 +59,13 @@ bool modify_or_insert_page_structure(uint32_t *table, vaddr_t vaddr, paddr_t pad
 }
 
 void map_page_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr) {
-	uint32_t *table = check_or_insert_table_structure(directory, vaddr);
-	modify_or_insert_page_structure(table, vaddr, paddr);
+	uint32_t index = check_or_insert_table_structure(directory, vaddr);
+	modify_or_insert_page_structure((uint32_t*)(uintptr_t)(directory[index] & ADDR_MASK), vaddr, paddr);
+}
+
+void map_page(vaddr_t vaddr, paddr_t paddr) {
+	uint32_t index = check_or_insert_table_structure((uint32_t*)(0xFFFFF000), vaddr);
+	modify_or_insert_page_structure((uint32_t*)(uintptr_t)(0xFFC00000 + (index * 0x400)), vaddr, paddr);
 }
 
 void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages) {
@@ -77,6 +82,7 @@ void enable_paging(uint32_t* directory) {
 void init_paging() {
 	uint32_t* directory = kpage_alloc();
 	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
+	directory[1023] = set_present(set_writeable(set_page(0, (uintptr_t)directory), true), true);
 	enable_paging(directory);
 }
 

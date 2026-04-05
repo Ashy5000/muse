@@ -17,6 +17,7 @@ int main() {
 	init_pic();
 	init_idt();
 	init_memory(&contexts[active_context]);
+	map_page(1024 * 1024 * 2, 1024 * 1024 * 2);
 	// kprint("TEST");
 
 	// vaddr_t phys_addr = (uintptr_t)kpage_alloc();

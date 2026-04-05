@@ -1,10 +1,6 @@
 #include "paging.h"
+#include "memory.h"
 #include "../drivers/text.h"
-// #include "memory.h"
-// #include "context.h"
-
-#define ADDR_MASK 0xFFFFF000
-#define TEN_BITS 0x3FF
 
 uint32_t set_present(uint32_t structure, bool present) {
 	if (present) {
@@ -68,10 +64,17 @@ void map_page(vaddr_t vaddr, paddr_t paddr) {
 	modify_or_insert_page_structure((uint32_t*)(uintptr_t)(0xFFC00000 + (index * 0x400)), vaddr, paddr);
 }
 
-void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages) {
+void map_page_range_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages) {
 	for (int i = 0; i < pages; i++) {
 		map_page_inactive(directory, vaddr + (i * PAGE_SIZE), paddr + (i * PAGE_SIZE));
 	}
+}
+
+bool check_page_status(vaddr_t vaddr) {
+	uint32_t directory_index = (vaddr >> 22) & TEN_BITS;
+	uint32_t table_index = (vaddr >> 12) & TEN_BITS;
+	uint32_t *table = (uint32_t*)(uintptr_t)(0xFFC00000 + (directory_index * 0x400));
+	return is_present(table[table_index]);
 }
 
 void enable_paging(uint32_t* directory) {
@@ -82,6 +85,11 @@ void enable_paging(uint32_t* directory) {
 void init_paging() {
 	uint32_t* directory = kpage_alloc();
 	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
+	for (int i = 0; i < *entry_count; i++) {
+		uint32_t bitmap_count = ((uint32_t*)(uintptr_t)(mmap_table[i].addr_low))[0];
+		uint32_t pages = (bitmap_count * sizeof(uint32_t) + PAGE_SIZE - 1) / PAGE_SIZE;
+		map_page_range_inactive(directory, mmap_table[i].addr_low, mmap_table[i].addr_low, pages);
+	}
 	directory[1023] = set_present(set_writeable(set_page(0, (uintptr_t)directory), true), true);
 	enable_paging(directory);
 }

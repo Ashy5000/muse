@@ -2,6 +2,7 @@
 #include "../drivers/text.h"
 #include "paging.h"
 #include "context.h"
+#include "alloc.h"
 
 #include <stdbool.h>
 
@@ -10,11 +11,6 @@ void kmemcpy(void *dst, void *src, mem_t size) {
 		((char*)dst)[i] = ((char*)src)[i];
 	}
 }
-
-struct block_header {
-	mem_t size;
-	mem_t free; // 0 = in use, 1 = free, 2 = end of memory
-};
 
 struct smap_entry *mmap_table = (struct smap_entry*)0x0504;
 uint32_t *entry_count = (uint32_t*)0x0500;
@@ -100,7 +96,7 @@ void init_memory(struct context *ctx) {
 			max_pages = size_aligned / PAGE_SIZE;
 		}
 
-		*((uint32_t*)(uintptr_t)mmap_table[0].addr_low) = bitmaps_in_entry & 0xffffffff;
+		*((uint32_t*)(uintptr_t)mmap_table[0].addr_low) = bitmaps_in_entry;
 	}
 
 	kprint("\nWrote ");
@@ -119,121 +115,13 @@ void init_memory(struct context *ctx) {
 	// STAGE IV
 	// OBJECTIVE: Set up kernel heap
 
-	// kprint("MEMORY STAGE IV BEGIN\n");
-	// kprint("Writing header...\n");
-	//
-	// ctx->heap = (void*)0x3001;
-	// struct block_header *header = ctx->heap;
-	// header->free = 1;
-	// header->size = 0x10000;
+	kprint("MEMORY STAGE IV BEGIN\n");
+	kprint("Writing header...\n");
+
+	ctx->heap = (void*)0x3001;
+	struct block_header *header = ctx->heap;
+	header->free = 1;
+	header->size = 0x10000;
 
 	kprint("Memory initialization complete.\n");
 }
-
-// void fuse_blocks(struct block_header *header) {
-// 	struct block_header *header_next = (void*)header + sizeof(struct block_header) + header->size;
-// 	if (header_next->free == 1 || header_next->free == 3) {
-// 		header->size += sizeof(struct block_header) + header_next->size;
-// 	}
-// 	header->free = 1;
-// }
-
-// void *vmalloc(vaddr_t size, uint32_t flags, struct context ctx) {
-// 	void *block = ctx.heap;
-// 	struct block_header *header;
-// 	while(1) {
-// 		header = block;
-// 		if (header->free == 2) {
-// 			return 0;
-// 		}
-// 		if (header->free == 1) {
-// 			fuse_blocks(header);
-// 		}
-// 		if (header->size >= size && header->free) {
-// 			if (header->size - size > sizeof(struct block_header)) {
-// 				struct block_header *new_header = block + size + sizeof(struct block_header);
-// 				vaddr_t page_start = (uintptr_t)new_header - ((uintptr_t)new_header % PAGE_SIZE);
-// 				if (!check_page_status(page_start)) {
-// 					map_page(page_start, (uintptr_t)kpage_alloc(), flags);
-// 				}
-// 				new_header->size = header->size - size - sizeof(struct block_header);
-// 				new_header->free = 1;
-// 			}
-// 			header->size = size;
-// 			header->free = 0;
-// 			vaddr_t begin = (uintptr_t)header + sizeof(struct block_header);
-// 			return (void*)(uintptr_t)begin;
-// 		} else {
-// 			block += header->size + sizeof(struct block_header);
-// 		}
-// 	}
-// }
-//
-// void *vmalloc_page(uint32_t flags, struct context ctx) {
-// 	void *block = ctx.heap;
-// 	struct block_header *header;
-// 	while(1) {
-// 		header = block;
-// 		if (header->free == 2) {
-// 			return 0;
-// 		}
-// 		if (header->free == 1) {
-// 			fuse_blocks(header);
-// 		}
-// 		vaddr_t page_start = (uintptr_t)block + PAGE_SIZE - ((uintptr_t)block % PAGE_SIZE);
-// 		vaddr_t page_end = page_start + PAGE_SIZE;
-// 		vaddr_t header_start = page_start - sizeof(struct block_header);
-// 		while (header_start < (uintptr_t)block + sizeof(struct block_header)) {
-// 			page_start += PAGE_SIZE;
-// 			page_end += PAGE_SIZE;
-// 			header_start += PAGE_SIZE;
-// 		}
-// 		if (page_end <= (uintptr_t)block + sizeof(struct block_header) + header->size && header->free) {
-// 			vaddr_t header_page_start = header_start - (header_start % PAGE_SIZE);
-// 			if (!check_page_status(header_page_start)) {
-// 				map_page(header_page_start, (uintptr_t)kpage_alloc(), flags);
-// 			}
-// 			if (!check_page_status(page_start)) {
-// 				map_page(page_start, (uintptr_t)kpage_alloc(), flags);
-// 			}
-// 			header->size = header_start - (uintptr_t)block + sizeof(struct block_header);
-// 			struct block_header *page_header = (struct block_header*)(uintptr_t)header_start;
-// 			page_header->free = 0;
-// 			page_header->size = PAGE_SIZE;
-// 			struct block_header *excess_header = (struct block_header*)((uintptr_t)page_header + sizeof(struct block_header) + PAGE_SIZE);
-// 			vaddr_t excess_page = (uintptr_t)excess_header - ((uintptr_t)excess_header % PAGE_SIZE);
-// 			if ((uintptr_t)(excess_header + 1) < (uintptr_t)header + header->size) {
-// 				if (!check_page_status(excess_page)) {
-// 					map_page(excess_page, (uintptr_t)kpage_alloc(), flags);
-// 				}
-// 				excess_header->size = (uintptr_t)header + header->size - (uintptr_t)excess_header;
-// 				excess_header->free = 1;
-// 			}
-// 			return (void*)(uintptr_t)page_start;
-// 		} else {
-// 			block += header->size + sizeof(struct block_header);
-// 		}
-// 	}
-// }
-
-// void *kmalloc(vaddr_t size, uint32_t flags, struct context ctx) {
-// 	vaddr_t begin = (uintptr_t)vmalloc(size, flags, ctx);
-// 	vaddr_t end = begin + size;
-// 	vaddr_t begin_aligned = begin - (begin % PAGE_SIZE);
-// 	vaddr_t end_aligned = end + (PAGE_SIZE - (end % PAGE_SIZE));
-// 	uint32_t page_count = (end_aligned - begin_aligned) / PAGE_SIZE;
-// 	vaddr_t page_vaddr = begin_aligned;
-// 	while (page_vaddr < end_aligned - PAGE_SIZE) {
-// 		if (!check_page_status(page_vaddr)) {
-// 			kprint("Mapping page...");
-// 			map_page(page_vaddr, (uintptr_t)kpage_alloc(), flags);
-// 		}
-// 		page_vaddr += PAGE_SIZE;
-// 	}
-// 	return (void*)(uintptr_t)begin;
-// }
-//
-// void kfree(void *ptr) {
-// 	struct block_header *header = ptr - sizeof(struct block_header);
-// 	header->free = 1;
-// }

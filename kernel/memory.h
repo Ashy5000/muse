@@ -13,15 +13,7 @@ struct __attribute__ ((packed)) smap_entry {
 	uint32_t acpi;
 };
 
-#ifdef BITS64
-
-typedef uint64_t mem_t;
-
-#else
-
 typedef uint32_t mem_t;
-
-#endif
 
 extern struct smap_entry *mmap_table;
 extern uint32_t *entry_count;
@@ -31,9 +23,5 @@ struct context;
 void kmemcpy(void *dst, void *src, mem_t size);
 void *kpage_alloc(void);
 void init_memory(struct context *ctx);
-void *vmalloc(mem_t size, uint32_t flags, struct context ctx);
-void *vmalloc_page(uint32_t flags, struct context ctx);
-void *kmalloc(mem_t size, uint32_t flags, struct context ctx);
-void kfree(void *ptr);
 
 #endif

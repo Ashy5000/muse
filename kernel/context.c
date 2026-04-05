@@ -25,9 +25,9 @@ const mem_t userspace_stack_size = PAGE_SIZE * 16;
 // 		map_page_inactive(i, (uintptr_t)kpage_alloc(), 0, page_directory_virt, true);
 // 	}
 // 	kprint("Done!\n");
-	// *((func_ptr_t*)(uintptr_t)userspace_stack_base) = func_ptr;
-	// ctx.esp = userspace_stack_base + sizeof(func_ptr_t);
-	// ctx.heap = (void*)(uintptr_t)userspace_stack_base + 1;
+// 	*((func_ptr_t*)(uintptr_t)userspace_stack_base) = func_ptr;
+// 	ctx.esp = userspace_stack_base + sizeof(func_ptr_t);
+// 	ctx.heap = (void*)(uintptr_t)userspace_stack_base + 1;
 // 	return ctx;
 // }
 

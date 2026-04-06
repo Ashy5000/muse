@@ -19,7 +19,7 @@ uint32_t erase_unusable_regions(uint32_t entry_count) {
 	uint32_t entry_count_new = entry_count;
 	uint32_t i = 0;
 	while (i < entry_count_new) {
-		if (mmap_table[i].type == 1) {
+		if (mmap_table[i].type == 1 && mmap_table[i].addr_low > 0) {
 			i++;
 		} else {
 			kmemcpy(mmap_table + i, mmap_table + i + 1, sizeof(struct smap_entry) * (entry_count_new - i - 1));
@@ -110,7 +110,7 @@ void init_memory(struct context *ctx) {
 
 	kprint("MEMORY STAGE III BEGIN\n");
 
-	init_paging();
+	ctx->page_directory = init_paging();
 
 	// STAGE IV
 	// OBJECTIVE: Set up kernel heap
@@ -118,7 +118,7 @@ void init_memory(struct context *ctx) {
 	kprint("MEMORY STAGE IV BEGIN\n");
 	kprint("Writing header...\n");
 
-	ctx->heap = (void*)0x3001;
+	ctx->heap = (void*)0x4001;
 	struct block_header *header = ctx->heap;
 	header->free = 1;
 	header->size = 0x10000;

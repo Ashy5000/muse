@@ -8,11 +8,21 @@
 extern uint32_t active_context;
 extern struct context contexts[32];
 
+void test() {
+	kprint("Hello, world!\n");
+	context_switch(contexts[0], false);
+}
+
 int main() {
 	init_console();
 	init_pic();
 	init_idt();
 	init_memory(&contexts[active_context]);
+
+	struct context ctx = create_user_context(test, contexts[active_context]);
+	context_switch(ctx, true);
+	kprint("We're back!\n");
+
 	// char *hello_world = kmalloc(13, contexts[active_context]);
 	// hello_world[0] = 'H';
 	// hello_world[1] = 'e';

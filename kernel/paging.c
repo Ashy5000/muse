@@ -1,5 +1,8 @@
 #include "paging.h"
 #include "memory.h"
+#include "context.h"
+#include "scroll.h"
+#include "alloc.h"
 #include "../drivers/text.h"
 
 uint32_t set_present(uint32_t structure, bool present) {
@@ -60,7 +63,7 @@ void map_page_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr) {
 }
 
 void map_page(vaddr_t vaddr, paddr_t paddr) {
-	uint32_t index = check_or_insert_table_structure((uint32_t*)(0xFFFFF000), vaddr);
+	uint32_t index = check_or_insert_table_structure((uint32_t*)0xFFFFF000, vaddr);
 	modify_or_insert_page_structure((uint32_t*)(uintptr_t)(0xFFC00000 + (index * 0x400)), vaddr, paddr);
 }
 
@@ -70,11 +73,15 @@ void map_page_range_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr, 
 	}
 }
 
-bool check_page_status(vaddr_t vaddr) {
+paddr_t get_page_mapping(vaddr_t vaddr) {
 	uint32_t directory_index = (vaddr >> 22) & TEN_BITS;
 	uint32_t table_index = (vaddr >> 12) & TEN_BITS;
 	uint32_t *table = (uint32_t*)(uintptr_t)(0xFFC00000 + (directory_index * 0x400));
-	return is_present(table[table_index]);
+	if (!is_present(table[table_index])) {
+		return 0;
+	} else {
+		return table[table_index] & ADDR_MASK;
+	}
 }
 
 void enable_paging(uint32_t* directory) {
@@ -82,7 +89,7 @@ void enable_paging(uint32_t* directory) {
 	__asm__ volatile ("mov %%cr0, %%eax; or %0, %%eax; mov %%eax, %%cr0" :: "r" (0x80000001) : "eax");
 }
 
-void init_paging() {
+paddr_t init_paging() {
 	uint32_t* directory = kpage_alloc();
 	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
 	for (int i = 0; i < *entry_count; i++) {
@@ -92,6 +99,27 @@ void init_paging() {
 	}
 	directory[1023] = set_present(set_writeable(set_page(0, (uintptr_t)directory), true), true);
 	enable_paging(directory);
+	return (uintptr_t)directory;
+}
+
+paddr_t create_user_directory(struct context ctx) {
+	struct scroll directory_scr = kmalloc_page(ctx);
+	uint32_t* directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
+	// The first table should encompass everything we need
+	// TODO: Add additional checks to ensure this is true
+	uint32_t* table_kernel = (uint32_t*)0xFFC00000;
+	struct scroll table_scr = kmalloc_page(ctx);
+	uint32_t* table_virt = (uint32_t*)(uintptr_t)table_scr.vaddr;
+	directory_virt[0] = set_present(set_writeable(set_page(0, table_scr.aligned_backend.page), true), true);
+	for (int i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
+		table_virt[i] = table_kernel[i];
+	}
+	// Map the new stack
+	for (int i = USERSPACE_STACK_BASE - USERSPACE_STACK_SIZE + PAGE_SIZE; i <= USERSPACE_STACK_BASE; i += PAGE_SIZE) {
+		paddr_t page_phys = (uintptr_t)kpage_alloc();
+		table_virt[(i >> 12) & TEN_BITS] = set_present(set_writeable(set_page(0, page_phys), true), true);
+	}
+	return directory_scr.aligned_backend.page;
 }
 
 void process_page_fault(void) {

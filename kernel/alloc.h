@@ -7,4 +7,5 @@ struct block_header {
 };
 
 void *kmalloc(vaddr_t size, struct context ctx);
+struct scroll kmalloc_page(struct context ctx);
 void kfree(void *p);

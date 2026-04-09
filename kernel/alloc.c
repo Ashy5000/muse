@@ -2,6 +2,7 @@
 #include "paging.h"
 #include "context.h"
 #include "scroll.h"
+#include "../drivers/text.h"
 
 void fuse_blocks(struct block_header *header) {
 	struct block_header *header_next = (void*)header + sizeof(struct block_header) + header->size;
@@ -45,10 +46,8 @@ void *kmalloc(vaddr_t size, struct context ctx) {
 }
 
 struct scroll kmalloc_page(struct context ctx) {
-	void *block = ctx.heap;
-	struct block_header *header;
+	struct block_header *header = ctx.heap;
 	while(1) {
-		header = block;
 		if (header->free == 2) {
 			struct scroll res;
 			res.vaddr = 0;
@@ -59,16 +58,17 @@ struct scroll kmalloc_page(struct context ctx) {
 		if (header->free == 1) {
 			fuse_blocks(header);
 		}
-		vaddr_t page_start = (uintptr_t)block + PAGE_SIZE - ((uintptr_t)block % PAGE_SIZE);
+		vaddr_t page_start = (uintptr_t)header + PAGE_SIZE - ((uintptr_t)header % PAGE_SIZE);
 		vaddr_t page_end = page_start + PAGE_SIZE;
 		vaddr_t header_start = page_start - sizeof(struct block_header);
-		while (header_start < (uintptr_t)block + sizeof(struct block_header)) {
+		while (header_start < (uintptr_t)header + sizeof(struct block_header)) {
 			page_start += PAGE_SIZE;
 			page_end += PAGE_SIZE;
 			header_start += PAGE_SIZE;
 		}
 		paddr_t page;
-		if (page_end <= (uintptr_t)block + sizeof(struct block_header) + header->size && header->free) {
+		__asm__ volatile ("xchgw %bx, %bx");
+		if (header->size >= PAGE_SIZE && header->free) {
 			vaddr_t header_page_start = header_start - (header_start % PAGE_SIZE);
 			if (!get_page_mapping(header_page_start)) {
 				map_page(header_page_start, (uintptr_t)kpage_alloc());
@@ -80,9 +80,8 @@ struct scroll kmalloc_page(struct context ctx) {
 			}
 			struct block_header *page_header = (struct block_header*)(uintptr_t)header_start;
 			page_header->free = 0;
-			page_header->size = (uintptr_t)block + header->size - page_start;
-			header->size = header_start - (uintptr_t)block - sizeof(struct block_header);
-			struct block_header *excess_header = (struct block_header*)((uintptr_t)page_header + sizeof(struct block_header) + PAGE_SIZE);
+			page_header->size = (uintptr_t)header + header->size - page_start;
+			struct block_header *excess_header = (struct block_header*)(uintptr_t)(page_end);
 			vaddr_t excess_page = (uintptr_t)excess_header - ((uintptr_t)excess_header % PAGE_SIZE);
 			if ((uintptr_t)(excess_header + 1) < (uintptr_t)header + header->size) {
 				if (!get_page_mapping(excess_page)) {
@@ -92,6 +91,7 @@ struct scroll kmalloc_page(struct context ctx) {
 				excess_header->free = 1;
 				page_header->size = PAGE_SIZE;
 			}
+			header->size = header_start - (uintptr_t)header - sizeof(struct block_header);
 			struct scroll res;
 			res.vaddr = page_start;
 			res.size = PAGE_SIZE;
@@ -99,7 +99,7 @@ struct scroll kmalloc_page(struct context ctx) {
 			res.aligned_backend.page = page;
 			return res;
 		} else {
-			block += header->size + sizeof(struct block_header);
+			header = (struct block_header*)((uintptr_t)header + header->size + sizeof(struct block_header));
 		}
 	}
 }

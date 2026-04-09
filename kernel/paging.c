@@ -106,7 +106,6 @@ paddr_t create_user_directory(struct context ctx) {
 	struct scroll directory_scr = kmalloc_page(ctx);
 	uint32_t* directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
 	// The first table should encompass everything we need
-	// TODO: Add additional checks to ensure this is true
 	uint32_t* table_kernel = (uint32_t*)0xFFC00000;
 	struct scroll table_scr = kmalloc_page(ctx);
 	uint32_t* table_virt = (uint32_t*)(uintptr_t)table_scr.vaddr;

@@ -28,7 +28,7 @@ protected_init:
 	mov fs, ax
 	mov gs, ax
 
-	mov ebp, 0x90000 ; Move stack to top of memory
+	mov ebp, 0x9fbff ; Move stack to top of memory
 	mov esp, ebp
 
 	call kernel_ascend

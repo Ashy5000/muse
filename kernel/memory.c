@@ -118,7 +118,7 @@ void init_memory(struct context *ctx) {
 	kprint("MEMORY STAGE IV BEGIN\n");
 	kprint("Writing header...\n");
 
-	ctx->heap = (void*)0x4001;
+	ctx->heap = (void*)0x10000;
 	struct block_header *header = ctx->heap;
 	header->free = 1;
 	header->size = 0x10000;

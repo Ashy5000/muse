@@ -5,8 +5,8 @@
 #include "../drivers/text.h"
 
 void fuse_blocks(struct block_header *header) {
-	struct block_header *header_next = (void*)header + sizeof(struct block_header) + header->size;
-	if (header_next->free == 1 || header_next->free == 3) {
+	struct block_header *header_next = (struct block_header*)((uintptr_t)header + sizeof(struct block_header) + header->size);
+	if (header_next->free == 1) {
 		header->size += sizeof(struct block_header) + header_next->size;
 	}
 	header->free = 1;
@@ -67,7 +67,6 @@ struct scroll kmalloc_page(struct context ctx) {
 			header_start += PAGE_SIZE;
 		}
 		paddr_t page;
-		__asm__ volatile ("xchgw %bx, %bx");
 		if (header->size >= PAGE_SIZE && header->free) {
 			vaddr_t header_page_start = header_start - (header_start % PAGE_SIZE);
 			if (!get_page_mapping(header_page_start)) {

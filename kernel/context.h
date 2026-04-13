@@ -9,16 +9,18 @@ struct context {
 	paddr_t page_directory;
 	bool present;
 	void *heap;
+	struct context *next;
 };
 
 typedef void(*func_ptr_t)(void);
 
-uint32_t create_user_context(func_ptr_t func_ptr, struct context ctx);
+void create_kernel_context(func_ptr_t func_ptr);
 void context_switch(struct context *ctx_new);
-void init_kernel_ctx(void);
+void init_first_ctx(void);
+void schedule(void);
 
-#define USERSPACE_STACK_BASE 0x200000
-#define USERSPACE_STACK_SIZE PAGE_SIZE * 4
+#define TASK_STACK_BASE 0x200000
+#define TASK_STACK_SIZE PAGE_SIZE * 4
 #define CTX_COUNT 32
 
 

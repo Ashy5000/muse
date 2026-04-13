@@ -1,29 +1,37 @@
-#include "memory.h"
 #include "pic.h"
+#include "apic.h"
 #include "interrupts.h"
 #include "../drivers/text.h"
 #include "context.h"
-#include "alloc.h"
-#include "scroll.h"
+#include "../drivers/hpet.h"
 
 extern struct context *active_ctx;
-extern struct context contexts[32];
 
 void test() {
-	kprint("meow\n");
-	context_switch(contexts);
+	for(;;) {
+		kprint("b");
+		schedule();
+	}
 }
 
 int main() {
 	init_console();
+	init_acpi();
+	init_hpet();
 	init_pic();
+	init_apic();
+	init_ioapic();
 	init_idt();
-	init_kernel_ctx();
+	init_first_ctx();
 	init_memory(active_ctx);
-
-	uint32_t index = create_user_context(test, *active_ctx);
-	context_switch(contexts + index);
-	kprint("woof\n");
+	start_hpet();
+	
+	// create_kernel_context(test);
+	//
+	// for(;;) {
+	// 	kprint("a");
+	// 	schedule();
+	// }
 
 	for(;;) {
 		__asm__("hlt");

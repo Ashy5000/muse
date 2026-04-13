@@ -1,10 +1,14 @@
 #include "memory.h"
-#include "../drivers/text.h"
 #include "paging.h"
 #include "context.h"
 #include "alloc.h"
+#include "../drivers/text.h"
+#include "../drivers/hpet.h"
 
 #include <stdbool.h>
+
+extern void *hpet_base;
+extern void *hpet_limit;
 
 void kmemcpy(void *dst, void *src, mem_t size) {
 	for (int i = 0; i < size; i++) {
@@ -32,10 +36,10 @@ uint32_t erase_unusable_regions(uint32_t entry_count) {
 void *kpage_alloc() {
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		uint32_t num_bitmaps = *((uint32_t*)(uintptr_t)mmap_table[i].addr_low);
-		mem_t addr = (uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
+		paddr_t addr = (uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
 		addr += PAGE_SIZE - (addr % PAGE_SIZE);
 		for (uint32_t j = 0; j < num_bitmaps; j++) {
-			uint32_t *bitmap = ((uint32_t*)(uintptr_t)mmap_table[i].addr_low + 1 + j);
+			uint32_t *bitmap = (uint32_t*)(uintptr_t)(mmap_table[i].addr_low + 1 + j);
 			for (uint32_t k = 0; k < 32; k++) {
 				if (((*bitmap >> k) & 1) == 0) {
 					*bitmap |= 1 << k;
@@ -48,6 +52,26 @@ void *kpage_alloc() {
 	kprint("Out of memory!");
 	__asm__ volatile ("hlt");
 	return 0;
+}
+
+void kpage_set_status(paddr_t addr, bool free) {
+	for (uint32_t i = 0; i < *entry_count; i++) {
+		uint32_t num_bitmaps = *((uint32_t*)(uintptr_t)mmap_table[i].addr_low);
+		paddr_t low = (uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
+		paddr_t high = mmap_table[i].addr_low + mmap_table[i].size_low;
+		if (addr >= low && addr <= high) {
+			paddr_t offset = addr - low;
+			uint32_t bitmap_idx = offset / (PAGE_SIZE * 32);
+			uint32_t *bitmap = (uint32_t*)(uintptr_t)(mmap_table[i].addr_low + 1 + bitmap_idx);
+			uint32_t bit_idx = (offset % (PAGE_SIZE * 32)) / PAGE_SIZE;
+			if (free) {
+				*bitmap &= ~(1 << bit_idx);
+			} else {
+				*bitmap |= 1 << bit_idx;
+			}
+			return;
+		}
+	}
 }
 
 void init_memory(struct context *ctx) {
@@ -104,6 +128,13 @@ void init_memory(struct context *ctx) {
 	kprint(" bitmaps to 0x");
 	kprint_int(mmap_table[0].addr_low, 16);
 	kprint(".\n");
+
+	uint32_t hpet_page_start = (uintptr_t)hpet_base - ((uintptr_t)hpet_base % PAGE_SIZE);
+	uint32_t hpet_page_end = (uintptr_t)hpet_limit + PAGE_SIZE - ((uintptr_t)hpet_limit % PAGE_SIZE);
+
+	for (uint32_t page = hpet_page_start; page < hpet_page_end; page += PAGE_SIZE) {
+		kpage_set_status(page, false);
+	}
 
 	// STAGE III
 	// OBJECTIVE: Intialize paging

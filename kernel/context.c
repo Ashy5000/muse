@@ -1,37 +1,49 @@
 #include "context.h"
+#include "alloc.h"
 #include "../drivers/text.h"
 
-struct context *active_ctx;
-struct context contexts[CTX_COUNT];
+struct context *active_ctx = 0;
+struct context *next_ctx = 0;
+struct context *last_ctx = 0;
+
+struct context first_ctx;
 
 extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 
-uint32_t create_user_context(func_ptr_t func_ptr, struct context ctx) {
-	struct context ctx_new;
-	ctx_new.heap = (void*)USERSPACE_STACK_BASE + 1;
-	ctx_new.present = 1;
-	ctx_new.page_directory = create_user_directory(ctx);
-	__asm__ volatile ("mov %0, %%cr3" :: "r"(ctx_new.page_directory) : );
-	uint32_t* stack = (uint32_t*)USERSPACE_STACK_BASE;
+void create_kernel_context(func_ptr_t func_ptr) {
+	struct context *ctx_new = kmalloc(sizeof(struct context), *active_ctx);
+	ctx_new->heap = (void*)TASK_STACK_BASE + 1;
+	ctx_new->present = true;
+	ctx_new->page_directory = create_user_directory(*active_ctx);
+	__asm__ volatile ("mov %0, %%cr3" :: "r"(ctx_new->page_directory) : );
+	uint32_t* stack = (uint32_t*)TASK_STACK_BASE;
 	stack[-1] = (uintptr_t)func_ptr;
 	stack[-2] = 0; // EBX
 	stack[-3] = 0; // ESI
 	stack[-4] = 0; // EDI
-	stack[-5] = USERSPACE_STACK_BASE; // EBP
+	stack[-5] = TASK_STACK_BASE; // EBP
 	__asm__ volatile ("mov %0, %%cr3" :: "r"(active_ctx->page_directory) : );
-	ctx_new.esp = (uintptr_t)(stack - 5);
-	int index = -1;
-	for (int i = 0; i < CTX_COUNT; i++) {
-		if (!contexts[i].present) {
-			contexts[i] = ctx_new;
-			index = i;
-			break;
-		}
+	ctx_new->esp = (uintptr_t)(stack - 5);
+	ctx_new->next = 0;
+	if (next_ctx) {
+		last_ctx->next = ctx_new;
+		last_ctx = ctx_new;
+	} else {
+		next_ctx = ctx_new;
+		last_ctx = ctx_new;
 	}
-	return index;
 }
 
-void init_kernel_ctx() {
-	active_ctx = contexts;
+void init_first_ctx() {
+	active_ctx = &first_ctx;
 	active_ctx->present = true;
+	active_ctx->next = 0;
+}
+
+void schedule() {
+	if (next_ctx) {
+		struct context *ctx = next_ctx;
+		next_ctx = next_ctx->next;
+		context_switch(ctx);
+	}
 }

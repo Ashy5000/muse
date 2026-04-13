@@ -4,6 +4,10 @@
 #include "scroll.h"
 #include "alloc.h"
 #include "../drivers/text.h"
+#include "../drivers/hpet.h"
+
+extern void *hpet_base;
+extern void *hpet_limit;
 
 uint32_t set_present(uint32_t structure, bool present) {
 	if (present) {
@@ -97,6 +101,9 @@ paddr_t init_paging() {
 		uint32_t pages = (bitmap_count * sizeof(uint32_t) + PAGE_SIZE - 1) / PAGE_SIZE;
 		map_page_range_inactive(directory, mmap_table[i].addr_low, mmap_table[i].addr_low, pages);
 	}
+	uint32_t hpet_page_start = (uintptr_t)hpet_base - ((uintptr_t)hpet_base % PAGE_SIZE);
+	uint32_t hpet_page_end = (uintptr_t)hpet_limit + PAGE_SIZE - ((uintptr_t)hpet_limit % PAGE_SIZE);
+	map_page_range_inactive(directory, hpet_page_start, hpet_page_start, (hpet_page_end - hpet_page_start) / PAGE_SIZE);
 	directory[1023] = set_present(set_writeable(set_page(0, (uintptr_t)directory), true), true);
 	enable_paging(directory);
 	return (uintptr_t)directory;
@@ -114,7 +121,7 @@ paddr_t create_user_directory(struct context ctx) {
 		table_virt[i] = table_kernel[i];
 	}
 	// Map the new stack
-	for (int i = USERSPACE_STACK_BASE - USERSPACE_STACK_SIZE + PAGE_SIZE; i <= USERSPACE_STACK_BASE; i += PAGE_SIZE) {
+	for (int i = TASK_STACK_BASE - TASK_STACK_SIZE + PAGE_SIZE; i <= TASK_STACK_BASE; i += PAGE_SIZE) {
 		paddr_t page_phys = (uintptr_t)kpage_alloc();
 		table_virt[(i >> 12) & TEN_BITS] = set_present(set_writeable(set_page(0, page_phys), true), true);
 	}

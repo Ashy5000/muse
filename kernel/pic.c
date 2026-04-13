@@ -43,7 +43,8 @@ void init_pic(void) {
 	io_wait();
 	outb(PIC2_DATA, ICW4_8086);
 	io_wait();
-	outb(PIC1_DATA, 0xFD);
+	// Mask out everything (about to switch to APIC)
+	outb(PIC1_DATA, 0xFF);
 	outb(PIC2_DATA, 0xFF);
 	kprint("PIC initialized.\n");
 }

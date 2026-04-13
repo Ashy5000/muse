@@ -7,8 +7,9 @@ mov sp, bp ; Top of the stack (lower address)
 
 mov [BOOT_DRIVE], dl ; BIOS stores boot drive in dl. Store into memory.
 
-mov ax, 2403h
-int 15h
+in al, 0x92
+or al, 2
+out 0x92, al
 
 call get_memory_info
 

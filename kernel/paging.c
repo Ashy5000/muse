@@ -4,10 +4,11 @@
 #include "scroll.h"
 #include "alloc.h"
 #include "../drivers/text.h"
-#include "../drivers/hpet.h"
 
 extern void *hpet_base;
 extern void *hpet_limit;
+extern uint32_t reserved_pages_count;
+extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
 uint32_t set_present(uint32_t structure, bool present) {
 	if (present) {
@@ -101,9 +102,9 @@ paddr_t init_paging() {
 		uint32_t pages = (bitmap_count * sizeof(uint32_t) + PAGE_SIZE - 1) / PAGE_SIZE;
 		map_page_range_inactive(directory, mmap_table[i].addr_low, mmap_table[i].addr_low, pages);
 	}
-	uint32_t hpet_page_start = (uintptr_t)hpet_base - ((uintptr_t)hpet_base % PAGE_SIZE);
-	uint32_t hpet_page_end = (uintptr_t)hpet_limit + PAGE_SIZE - ((uintptr_t)hpet_limit % PAGE_SIZE);
-	map_page_range_inactive(directory, hpet_page_start, hpet_page_start, (hpet_page_end - hpet_page_start) / PAGE_SIZE);
+	for (uint32_t i = 0; i < reserved_pages_count; i++) {
+		map_page_inactive(directory, reserved_pages[i], reserved_pages[i]);
+	}
 	directory[1023] = set_present(set_writeable(set_page(0, (uintptr_t)directory), true), true);
 	enable_paging(directory);
 	return (uintptr_t)directory;

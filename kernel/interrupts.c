@@ -43,11 +43,11 @@ void idt_set_entry(int vector, void *isr) {
 }
 
 void init_idt(void) {
-	for (int i = 0; i < 32; i++) {
-		isrs[i] = handle_exception;
-	}
-	isrs[0x21] = handle_keypress;
-	isrs[0x0E] = handle_page_fault;
+	// for (int i = 0; i < 32; i++) {
+	// 	isrs[i] = handle_exception;
+	// }
+	isrs[0x31] = handle_keypress;
+	// isrs[0x0E] = handle_page_fault;
 
 	idtr_inst.base = (uintptr_t)idt;
 	idtr_inst.limit = (uintptr_t)(sizeof(struct idt_entry)) * ISR_COUNT - 1;

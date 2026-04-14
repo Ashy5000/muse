@@ -12,6 +12,7 @@ struct madt {
 };
 
 void init_apic();
+void eoi();
 void init_ioapic();
 
 #endif

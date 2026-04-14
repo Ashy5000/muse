@@ -3,12 +3,14 @@
 #include "context.h"
 #include "alloc.h"
 #include "../drivers/text.h"
-#include "../drivers/hpet.h"
 
 #include <stdbool.h>
 
 extern void *hpet_base;
 extern void *hpet_limit;
+
+uint32_t reserved_pages_count = 0;
+uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
 void kmemcpy(void *dst, void *src, mem_t size) {
 	for (int i = 0; i < size; i++) {
@@ -129,11 +131,8 @@ void init_memory(struct context *ctx) {
 	kprint_int(mmap_table[0].addr_low, 16);
 	kprint(".\n");
 
-	uint32_t hpet_page_start = (uintptr_t)hpet_base - ((uintptr_t)hpet_base % PAGE_SIZE);
-	uint32_t hpet_page_end = (uintptr_t)hpet_limit + PAGE_SIZE - ((uintptr_t)hpet_limit % PAGE_SIZE);
-
-	for (uint32_t page = hpet_page_start; page < hpet_page_end; page += PAGE_SIZE) {
-		kpage_set_status(page, false);
+	for (uint32_t i = 0; i < reserved_pages_count; i++) {
+		kpage_set_status(reserved_pages[i], false);
 	}
 
 	// STAGE III

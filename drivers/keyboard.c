@@ -1,4 +1,5 @@
 #include "../kernel/io.h"
+#include "../kernel/apic.h"
 #include "text.h"
 
 #include <stdbool.h>
@@ -118,10 +119,6 @@ bool keyboard_locked = false;
 void handle_keypress_inner(void) {
 	while (keyboard_locked) {}
 	keyboard_locked = true;
-	outb(0x20, 0x20);
-	io_wait();
-	outb(0xA0, 0x20);
-	io_wait();
 	unsigned char scan_code = inb(0x60);
 	unsigned char character = keycode_to_char(scan_code);
 	if (character == 255) {
@@ -130,6 +127,7 @@ void handle_keypress_inner(void) {
 		kput_char(character);
 	}
 	keyboard_locked = false;
+	eoi();
 }
 
 __asm__ (

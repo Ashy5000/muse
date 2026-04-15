@@ -12,6 +12,8 @@ struct context first_ctx;
 
 extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 
+extern uint32_t tick_period;
+
 void create_kernel_context(func_ptr_t func_ptr, uint8_t priority) {
 	struct context *ctx_new = kmalloc(sizeof(struct context), *active_ctx);
 	ctx_new->heap = (void*)TASK_STACK_BASE + 1;
@@ -80,18 +82,8 @@ void preempt() {
 uint16_t acc;
 struct context *first_sleeping_ctx = 0;
 
-#define SECOND 781248
-#define FREQ_DIV (1 << 7)
-
 void handle_timer_inner() {
 	eoi();
-	set_time(0);
-	set_delay(SECOND * active_ctx->priority);
-	acc++;
-	if ((acc % FREQ_DIV) > 0) {
-		return;
-	}
-
 	lock_scheduler();
 
 	// Update sleeping contexts
@@ -117,16 +109,24 @@ void handle_timer_inner() {
 	// Preempt this task
 	preempt();
 
+	// kprint("meow");
+	uint32_t period_nano = tick_period / 1000000;
+	unlock_scheduler();
+	set_time(0);
+	set_delay(1000000 / period_nano);
+}
+
+void sleep_millis(uint32_t millis) {
+	lock_scheduler();
+	active_ctx->next = first_sleeping_ctx;
+	first_sleeping_ctx = active_ctx;
+	first_sleeping_ctx->alarm = millis;
+	schedule();
 	unlock_scheduler();
 }
 
 void sleep_secs(uint32_t seconds) {
-	lock_scheduler();
-	active_ctx->next = first_sleeping_ctx;
-	first_sleeping_ctx = active_ctx;
-	first_sleeping_ctx->alarm = seconds;
-	schedule();
-	unlock_scheduler();
+	sleep_millis(seconds * 1000);
 }
 
 __asm__ (

@@ -7,8 +7,7 @@ struct hpet *hpet_global;
 void *hpet_base;
 uint32_t timer_idx;
 uint32_t timer_irq;
-
-#define TICK_PERIOD 0xF4240 // 1 nanosecond
+uint32_t tick_period;
 
 extern uint32_t reserved_pages_count;
 extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
@@ -36,7 +35,8 @@ void init_hpet() {
 		reserved_pages_count++;
 	}
 
-	general_capabilities[1] = TICK_PERIOD;
+	tick_period = general_capabilities[1];
+
 	for (uint8_t i = 0; i < timer_count; i++) {
 		uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100 + 0x20 * i);
 
@@ -76,7 +76,6 @@ void set_time(uint32_t time) {
 }
 
 void set_delay(uint32_t delay) {
-	volatile uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100);
 	volatile uint32_t *comparator = (uint32_t*)(hpet_base + 0x108);
-	comparator[0] = get_time() + delay;
+	comparator[0] = delay;
 }

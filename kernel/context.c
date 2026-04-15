@@ -1,6 +1,7 @@
 #include "context.h"
 #include "alloc.h"
 #include "../drivers/text.h"
+#include "apic.h"
 
 struct context *active_ctx = 0;
 struct context *next_ctx = 0;
@@ -25,19 +26,16 @@ void create_kernel_context(func_ptr_t func_ptr) {
 	__asm__ volatile ("mov %0, %%cr3" :: "r"(active_ctx->page_directory) : );
 	ctx_new->esp = (uintptr_t)(stack - 5);
 	ctx_new->next = 0;
-	if (next_ctx) {
-		last_ctx->next = ctx_new;
-		last_ctx = ctx_new;
-	} else {
-		next_ctx = ctx_new;
-		last_ctx = ctx_new;
-	}
+	last_ctx->next = ctx_new;
+	last_ctx = ctx_new;
 }
 
 void init_first_ctx() {
 	active_ctx = &first_ctx;
 	active_ctx->present = true;
 	active_ctx->next = 0;
+	next_ctx = active_ctx;
+	last_ctx = active_ctx;
 }
 
 void schedule() {
@@ -47,3 +45,31 @@ void schedule() {
 		context_switch(ctx);
 	}
 }
+
+void preempt() {
+	if (next_ctx) {
+		struct context *ctx = next_ctx;
+		last_ctx->next = next_ctx;
+		last_ctx = last_ctx->next;
+		next_ctx = next_ctx->next;
+		last_ctx->next = 0;
+		context_switch(ctx);
+	}
+}
+
+void handle_timer_inner() {
+	eoi();
+	__asm__ volatile ("cli");
+	preempt();
+	__asm__ volatile ("sti");
+}
+
+__asm__ (
+	".globl handle_timer;"
+	"handle_timer:;"
+	"pushal;"
+	"cld;"
+	"call handle_timer_inner;"
+	"popal;"
+	"iret;"
+);

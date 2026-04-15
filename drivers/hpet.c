@@ -47,7 +47,9 @@ void init_hpet() {
 		uint32_t routing_map = timer_conf[1];
 		for (uint32_t i = 0; i < 32; i++) {
 			if (((routing_map >> i) & 1) > 0 && i != 0x01) { // 0x01 is the keyboard IRQ
+				timer_0_irq = i;
 				timer_conf[0] |= (i << 9);
+				break;
 			}
 		}
 	}
@@ -69,5 +71,6 @@ void init_delay(uint32_t delay) {
 	if (target % TICK_PERIOD > 0) {
 		target += TICK_PERIOD - (target % TICK_PERIOD);
 	}
+	comparator[0] = target;
 	timer_conf[0] |= 1 << 2;
 }

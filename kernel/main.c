@@ -8,9 +8,9 @@
 extern struct context *active_ctx;
 
 void test() {
+	__asm__ volatile ("sti");
 	for(;;) {
 		kprint("b");
-		schedule();
 	}
 }
 
@@ -26,12 +26,11 @@ int main() {
 	init_memory(active_ctx);
 	start_hpet();
 	
-	// create_kernel_context(test);
-	//
-	// for(;;) {
-	// 	kprint("a");
-	// 	schedule();
-	// }
+	create_kernel_context(test);
+
+	for(;;) {
+		kprint("a");
+	}
 
 	for(;;) {
 		__asm__("hlt");

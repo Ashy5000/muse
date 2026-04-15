@@ -13,6 +13,8 @@ uint32_t apic_base;
 extern uint32_t reserved_pages_count;
 extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
+extern uint32_t timer_0_irq;
+
 // Set base address for APIC registers and enable local APIC.
 void set_apic_base(uint32_t base) {
 	setMSR(APIC_BASE_MSR, base | 0x800, 0);
@@ -59,15 +61,15 @@ uint32_t read_ioapic(uint32_t base, uint8_t offset) {
 }
 
 void map_irq(uint32_t base, uint8_t irq) {
-		uint32_t entry_low = read_ioapic(base, 0x10 + (irq * 2));
-		uint32_t entry_high = read_ioapic(base, 0x11 + (irq * 2));
-		entry_low = (entry_low & ~0xff) | ((0x30 + irq) & 0xff); // Set interrupt vector.
-		entry_low &= ~(0x7 << 8); // Set delivery mode to normal
-		entry_low &= ~(0x1 << 11); // Physical
-		entry_low &= ~(0x1 << 15); // Edge sensitive
-		entry_low &= ~(0x1 << 16); // Don't mask the interrupt
-		write_ioapic(base, 0x10 + (irq * 2), entry_low);
-		write_ioapic(base, 0x11 + (irq * 2), entry_high);
+	uint32_t entry_low = read_ioapic(base, 0x10 + (irq * 2));
+	uint32_t entry_high = read_ioapic(base, 0x11 + (irq * 2));
+	entry_low = (entry_low & ~0xff) | ((0x30 + irq) & 0xff); // Set interrupt vector.
+	entry_low &= ~(0x7 << 8); // Set delivery mode to normal
+	entry_low &= ~(0x1 << 11); // Physical
+	entry_low &= ~(0x1 << 15); // Edge sensitive
+	entry_low &= ~(0x1 << 16); // Don't mask the interrupt
+	write_ioapic(base, 0x10 + (irq * 2), entry_low);
+	write_ioapic(base, 0x11 + (irq * 2), entry_high);
 }
 
 void init_ioapic() {
@@ -97,4 +99,5 @@ void init_ioapic() {
 	uint32_t max_redirection_entries = (read_ioapic(ioapic_base, 0x01) >> 16) & 0xff;
 
 	map_irq(ioapic_base, 1); // Keyboard
+	map_irq(ioapic_base, timer_0_irq);
 }

@@ -112,15 +112,23 @@ paddr_t init_paging() {
 
 paddr_t create_user_directory(struct context ctx) {
 	struct scroll directory_scr = kmalloc_page(ctx);
-	uint32_t* directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
-	// The first table should encompass everything we need
-	uint32_t* table_kernel = (uint32_t*)0xFFC00000;
+	uint32_t *directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
+
+	// Copy the current directory
+	uint32_t *directory_active = (uint32_t*)0xFFFFF000;
+	for (uint32_t i = 1; i < PAGE_SIZE / sizeof(uint32_t); i++) {
+		directory_virt[i] = directory_active[i];
+	}
+
+	// Copy the first table- we need to modify it to add the new stack
+	uint32_t* table_active = (uint32_t*)0xFFC00000;
 	struct scroll table_scr = kmalloc_page(ctx);
 	uint32_t* table_virt = (uint32_t*)(uintptr_t)table_scr.vaddr;
 	directory_virt[0] = set_present(set_writeable(set_page(0, table_scr.aligned_backend.page), true), true);
 	for (int i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
-		table_virt[i] = table_kernel[i];
+		table_virt[i] = table_active[i];
 	}
+
 	// Map the new stack
 	for (int i = TASK_STACK_BASE - TASK_STACK_SIZE + PAGE_SIZE; i <= TASK_STACK_BASE; i += PAGE_SIZE) {
 		paddr_t page_phys = (uintptr_t)kpage_alloc();

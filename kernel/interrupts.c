@@ -1,12 +1,16 @@
+#include <stdbool.h>
 #include "interrupts.h"
 #include "../drivers/text.h"
 #include "../drivers/keyboard.h"
+#include "context.h"
 
 #include <stdint.h>
 
 extern void handle_page_fault(void);
 
 #define ISR_COUNT 256
+
+extern uint32_t timer_0_irq;
 
 struct __attribute__((packed)) idt_entry {
 	uint16_t isr_addr_low;
@@ -47,6 +51,7 @@ void init_idt(void) {
 	// 	isrs[i] = handle_exception;
 	// }
 	isrs[0x31] = handle_keypress;
+	isrs[0x30 + timer_0_irq] = handle_timer;
 	// isrs[0x0E] = handle_page_fault;
 
 	idtr_inst.base = (uintptr_t)idt;

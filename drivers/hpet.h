@@ -42,6 +42,7 @@ struct hpet {
 void init_hpet();
 void start_hpet();
 uint32_t get_time();
-void init_delay(uint32_t delay);
+void set_time(uint32_t time);
+void set_delay(uint32_t delay);
 
 #endif

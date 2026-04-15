@@ -13,7 +13,7 @@ uint32_t apic_base;
 extern uint32_t reserved_pages_count;
 extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
-extern uint32_t timer_0_irq;
+extern uint32_t timer_irq;
 
 // Set base address for APIC registers and enable local APIC.
 void set_apic_base(uint32_t base) {
@@ -99,5 +99,5 @@ void init_ioapic() {
 	uint32_t max_redirection_entries = (read_ioapic(ioapic_base, 0x01) >> 16) & 0xff;
 
 	map_irq(ioapic_base, 1); // Keyboard
-	map_irq(ioapic_base, timer_0_irq);
+	map_irq(ioapic_base, timer_irq);
 }

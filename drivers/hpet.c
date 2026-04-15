@@ -5,7 +5,8 @@
 
 struct hpet *hpet_global;
 void *hpet_base;
-uint32_t timer_0_irq;
+uint32_t timer_idx;
+uint32_t timer_irq;
 
 #define TICK_PERIOD 0xF4240 // 1 nanosecond
 
@@ -38,18 +39,17 @@ void init_hpet() {
 	general_capabilities[1] = TICK_PERIOD;
 	for (uint8_t i = 0; i < timer_count; i++) {
 		uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100 + 0x20 * i);
-		timer_conf[0] &= ~(1 << 3); // Nonperiodic
-		timer_conf[0] |= 1 << 8;
-	}
-	if (timer_count >= 1) {
-		// Map the first timer's IRQ
-		uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100);
+
+		timer_conf[0] |= 1 << 8; // 32-bit mode
+
 		uint32_t routing_map = timer_conf[1];
-		for (uint32_t i = 0; i < 32; i++) {
-			if (((routing_map >> i) & 1) > 0 && i != 0x01) { // 0x01 is the keyboard IRQ
-				timer_0_irq = i;
-				timer_conf[0] |= (i << 9);
-				break;
+		for (uint32_t j = 0; j < 32; j++) {
+			if (((routing_map >> j) & 1) > 0 && j != 0x01) { // 0x01 is the keyboard IRQ
+				timer_irq = j;
+				timer_conf[0] |= timer_irq << 9; // Set IRQ
+				timer_conf[0] |= 1 << 2; // Enable interrupts
+				timer_idx = i;
+				return;
 			}
 		}
 	}
@@ -60,17 +60,23 @@ void start_hpet() {
 	general_conf[0] |= 1;
 }
 
+void stop_hpet() {
+	uint32_t *general_conf = hpet_base + 0x10;
+	general_conf[0] &= ~1;
+}
+
 uint32_t get_time() {
 	return *((uint32_t*)(hpet_base + 0xF0));
 }
 
-void init_delay(uint32_t delay) {
-	uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100);
-	uint32_t *comparator = (uint32_t*)(hpet_base + 0x108);
-	uint32_t target = get_time() + delay;
-	if (target % TICK_PERIOD > 0) {
-		target += TICK_PERIOD - (target % TICK_PERIOD);
-	}
-	comparator[0] = target;
-	timer_conf[0] |= 1 << 2;
+void set_time(uint32_t time) {
+	stop_hpet();
+	*((uint32_t*)(hpet_base + 0xF0)) = time;
+	start_hpet();
+}
+
+void set_delay(uint32_t delay) {
+	volatile uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100);
+	volatile uint32_t *comparator = (uint32_t*)(hpet_base + 0x108);
+	comparator[0] = get_time() + delay;
 }

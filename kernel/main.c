@@ -7,10 +7,22 @@
 
 extern struct context *active_ctx;
 
+void idle() {
+	unlock_scheduler();
+	for (;;) {
+		lock_scheduler();
+		preempt();
+		unlock_scheduler();
+	}
+}
+
 void test() {
-	__asm__ volatile ("sti");
-	for(;;) {
-		kprint("b");
+	unlock_scheduler();
+	kprint("See you in 3 seconds!\n");
+	sleep_secs(3);
+	kprint("Hi again!\n");
+	for (;;) {
+		__asm__ ("hlt");
 	}
 }
 
@@ -26,11 +38,10 @@ int main() {
 	init_memory(active_ctx);
 	start_hpet();
 	
-	create_kernel_context(test);
-
-	for(;;) {
-		kprint("a");
-	}
+	lock_scheduler();
+	create_kernel_context(idle, 1);
+	create_kernel_context(test, 1);
+	unlock_scheduler();
 
 	for(;;) {
 		__asm__("hlt");

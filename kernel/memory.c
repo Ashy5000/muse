@@ -96,7 +96,7 @@ void init_memory(struct context *ctx) {
 
 	kprint("MEMORY STAGE II BEGIN\n");
 
-	kprint("Writing bitmaps: ");
+	kprint("Writing bitmaps...\n");
 
 	uint32_t bitmaps_written = 0;
 
@@ -114,7 +114,6 @@ void init_memory(struct context *ctx) {
 			*((uint32_t*)(uintptr_t)addr + j + 1) = 0; // 0 = free, 1 = used
 			bitmaps_written++;
 			bitmaps_in_entry++;
-			kput_char('#');
 			addr += sizeof(uint32_t);
 			size -= sizeof(uint32_t);
 			addr_aligned = addr - PAGE_SIZE + (addr % PAGE_SIZE);
@@ -125,7 +124,7 @@ void init_memory(struct context *ctx) {
 		*((uint32_t*)(uintptr_t)mmap_table[0].addr_low) = bitmaps_in_entry;
 	}
 
-	kprint("\nWrote ");
+	kprint("Wrote ");
 	kprint_int(bitmaps_written, 10);
 	kprint(" bitmaps to 0x");
 	kprint_int(mmap_table[0].addr_low, 16);

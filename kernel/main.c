@@ -4,6 +4,7 @@
 #include "../drivers/text.h"
 #include "context.h"
 #include "../drivers/hpet.h"
+#include "pci.h"
 
 extern struct context *active_ctx;
 
@@ -36,12 +37,14 @@ int main() {
 	init_idt();
 	init_first_ctx();
 	init_memory(active_ctx);
+	init_pci();
+
 	start_hpet();
 	
-	lock_scheduler();
-	create_kernel_context(idle, 1);
-	create_kernel_context(test, 1);
-	unlock_scheduler();
+	// lock_scheduler();
+	// create_kernel_context(idle, 1);
+	// create_kernel_context(test, 1);
+	// unlock_scheduler();
 
 	for(;;) {
 		__asm__("hlt");

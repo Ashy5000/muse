@@ -1,4 +1,5 @@
 floppya: 1_44="disk.bin", status=inserted
 boot:floppy
 display_library: x, options="gui_debug"
+pci: enabled=1, chipset=i440fx
 magic_break: enabled=1

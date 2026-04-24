@@ -95,6 +95,7 @@ void enable_paging(uint32_t* directory) {
 }
 
 paddr_t init_paging() {
+	kprint("Building paging structures...\n");
 	uint32_t* directory = kpage_alloc();
 	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
 	for (int i = 0; i < *entry_count; i++) {
@@ -106,7 +107,9 @@ paddr_t init_paging() {
 		map_page_inactive(directory, reserved_pages[i], reserved_pages[i]);
 	}
 	directory[1023] = set_present(set_writeable(set_page(0, (uintptr_t)directory), true), true);
+	kprint("Enabling paging...\n");
 	enable_paging(directory);
+	kprint("Paging enabled.\n");
 	return (uintptr_t)directory;
 }
 

@@ -40,6 +40,30 @@ uint8_t get_secondary_bus(uint8_t bus, uint8_t slot, uint8_t func) {
 	return pci_config_read(bus, slot, func, 0x18) >> 8;
 }
 
+struct pci_handler *first_handler;
+struct pci_handler *last_handler;
+
+void pci_register_handler(struct pci_handler *handler) {
+	handler->next = 0;
+	if (last_handler) {
+		last_handler->next = handler;
+		last_handler = handler;
+	} else {
+		first_handler = handler;
+		last_handler = handler;
+	}
+}
+
+void init_function(struct pci_func fn) {
+	struct pci_handler *handler = first_handler;
+	while (handler) {
+		if (handler->class_code == fn.class_code && handler->subclass_code == fn.subclass_code) {
+			handler->init(fn);
+		}
+		handler = handler->next;
+	}
+}
+
 struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 	struct pci_func res;
 	uint16_t vendor = get_vendor_id(bus, slot, func);
@@ -56,7 +80,6 @@ struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 			res.type &= ~0x80;
 		}
 		if (res.type == 0x1) { // PCI-PCI bridge
-			kprint("Found PCI-PCI bus.\n");
 			scan_pci_bus(get_secondary_bus(bus, slot, func));
 		}
 		kprint("Found function with vendor 0x");
@@ -66,27 +89,26 @@ struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 		kprint(" and subclass 0x");
 		kprint_int(res.subclass_code, 16);
 		kprint(".\n");
+		init_function(res);
 		return res;
 	}
 }
 
-struct pci_dev scan_pci_dev(uint8_t bus, uint8_t device) {
+struct pci_dev scan_pci_dev(uint8_t bus, uint8_t slot) {
 	struct pci_dev dev;
 	dev.present = false;
 	dev.bus = bus;
-	dev.device = device;
-	struct pci_func func = scan_pci_func(bus, device, 0);
+	dev.slot = slot;
+	struct pci_func func = scan_pci_func(bus, slot, 0);
 	if (func.vendor == 0xFFFF) {
 		return dev;
 	}
 	dev.present = true;
 	dev.func_count = 1;
 	dev.funcs[0] = func;
-	if ((func.type & 0x80) == 0) {
-		return dev;
-	} else {
+	if (func.multi_function) {
 		for (uint8_t i = 1; i < 8; i++) {
-			func = scan_pci_func(bus, device, i);
+			func = scan_pci_func(bus, slot, i);
 			if (func.vendor == 0xFFFF) {
 				break;
 			}

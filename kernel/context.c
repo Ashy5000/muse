@@ -1,7 +1,6 @@
 #include "context.h"
 #include "alloc.h"
 #include "../drivers/hpet.h"
-#include "../drivers/text.h"
 #include "apic.h"
 
 struct context *active_ctx = 0;
@@ -15,10 +14,11 @@ extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 extern uint32_t tick_period;
 
 void create_kernel_context(func_ptr_t func_ptr, uint8_t priority) {
-	struct context *ctx_new = kmalloc(sizeof(struct context), *active_ctx);
+	lock_scheduler();
+	struct context *ctx_new = kmalloc(sizeof(struct context));
 	ctx_new->heap = (void*)TASK_STACK_BASE + 1;
 	ctx_new->present = true;
-	ctx_new->page_directory = create_user_directory(*active_ctx);
+	ctx_new->page_directory = create_user_directory();
 	ctx_new->priority = priority;
 	__asm__ volatile ("mov %0, %%cr3" :: "r"(ctx_new->page_directory) : );
 	uint32_t* stack = (uint32_t*)TASK_STACK_BASE;
@@ -27,6 +27,9 @@ void create_kernel_context(func_ptr_t func_ptr, uint8_t priority) {
 	stack[-3] = 0; // ESI
 	stack[-4] = 0; // EDI
 	stack[-5] = TASK_STACK_BASE; // EBP
+	struct block_header *header = (void*)ctx_new->heap;
+	header->free = 3;
+	header->size = 0x1000; // TODO: Actually justify this somehow
 	__asm__ volatile ("mov %0, %%cr3" :: "r"(active_ctx->page_directory) : );
 	ctx_new->esp = (uintptr_t)(stack - 5);
 	ctx_new->next = 0;
@@ -37,6 +40,7 @@ void create_kernel_context(func_ptr_t func_ptr, uint8_t priority) {
 		last_ctx->next = ctx_new;
 		last_ctx = ctx_new;
 	}
+	unlock_scheduler();
 }
 
 void init_first_ctx() {
@@ -109,7 +113,6 @@ void handle_timer_inner() {
 	// Preempt this task
 	preempt();
 
-	// kprint("meow");
 	uint32_t period_nano = tick_period / 1000000;
 	unlock_scheduler();
 	set_time(0);

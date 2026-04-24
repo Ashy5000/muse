@@ -6,11 +6,11 @@
 
 struct block_header {
 	mem_t size;
-	mem_t free; // 0 = in use, 1 = free, 2 = end of memory
+	uint8_t free; // Bit 0: free if set. Bit 1: last header if set.
 };
 
-void *kmalloc(vaddr_t size, struct context ctx);
-struct scroll kmalloc_page(struct context ctx);
+void *kmalloc(vaddr_t size);
+struct scroll kmalloc_page();
 void kfree(void *p);
 
 #endif

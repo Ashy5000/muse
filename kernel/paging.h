@@ -18,6 +18,6 @@ void map_page_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr);
 void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages);
 void map_page(vaddr_t vaddr, paddr_t paddr);
 uint32_t get_page_mapping(vaddr_t vaddr);
-paddr_t create_user_directory(struct context ctx);
+paddr_t create_user_directory();
 
 #endif

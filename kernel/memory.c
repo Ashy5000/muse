@@ -35,13 +35,17 @@ uint32_t erase_unusable_regions(uint32_t entry_count) {
 	return entry_count_new;
 }
 
+uint32_t get_bitmap_count(uint32_t idx) {
+	return *((uint32_t*)(uintptr_t)mmap_table[idx].addr_low);
+}
+
 void *kpage_alloc() {
 	for (uint32_t i = 0; i < *entry_count; i++) {
-		uint32_t num_bitmaps = *((uint32_t*)(uintptr_t)mmap_table[i].addr_low);
+		uint32_t num_bitmaps = get_bitmap_count(i);
 		paddr_t addr = (uintptr_t)mmap_table[i].addr_low + (num_bitmaps + 1) * sizeof(uint32_t);
 		addr += PAGE_SIZE - (addr % PAGE_SIZE);
 		for (uint32_t j = 0; j < num_bitmaps; j++) {
-			uint32_t *bitmap = (uint32_t*)(uintptr_t)(mmap_table[i].addr_low + 1 + j);
+			uint32_t *bitmap = (uint32_t*)(uintptr_t)(mmap_table[i].addr_low) + 1 + j;
 			for (uint32_t k = 0; k < 32; k++) {
 				if (((*bitmap >> k) & 1) == 0) {
 					*bitmap |= 1 << k;
@@ -149,7 +153,7 @@ void init_memory(struct context *ctx) {
 
 	ctx->heap = (void*)0x10000;
 	struct block_header *header = ctx->heap;
-	header->free = 1;
+	header->free = 3;
 	header->size = 0x10000;
 
 	kprint("Memory initialization complete.\n");

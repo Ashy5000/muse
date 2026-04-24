@@ -1,3 +1,6 @@
+#ifndef SCROLL_H
+#define SCROLL_H
+
 #include "paging.h"
 
 enum scroll_type {
@@ -14,3 +17,7 @@ struct scroll {
 	enum scroll_type type;
 	struct scroll_aligned_backend aligned_backend;
 };
+
+void scroll_unmap(struct scroll scr);
+
+#endif

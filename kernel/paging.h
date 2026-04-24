@@ -2,6 +2,7 @@
 #define PAGING_H
 
 #include "memory.h"
+#include "context.h"
 
 #include <stdint.h>
 
@@ -10,14 +11,12 @@
 #define TEN_BITS 0x3FF
 
 
-typedef mem_t paddr_t;
-typedef mem_t vaddr_t;
-
 paddr_t init_paging();
 void map_page_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr);
 void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages);
 void map_page(vaddr_t vaddr, paddr_t paddr);
+void unmap_page(vaddr_t vaddr);
 uint32_t get_page_mapping(vaddr_t vaddr);
-paddr_t create_user_directory();
+paddr_t create_task_directory(func_ptr_t func_ptr);
 
 #endif

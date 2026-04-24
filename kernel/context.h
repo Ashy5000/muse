@@ -3,7 +3,6 @@
 
 #include "memory.h"
 #include "paging.h"
-
 struct context {
 	mem_t esp;
 	paddr_t page_directory;
@@ -13,8 +12,6 @@ struct context {
 	uint8_t priority;
 	uint32_t alarm;
 };
-
-typedef void(*func_ptr_t)(void);
 
 void create_kernel_context(func_ptr_t func_ptr, uint8_t priority);
 void context_switch(struct context *ctx_new);
@@ -26,9 +23,7 @@ void preempt(void);
 void handle_timer(void);
 void sleep_secs(uint32_t seconds);
 
-#define TASK_STACK_BASE 0x200000
+#define TASK_STACK_BASE 0x9F000
 #define TASK_STACK_SIZE PAGE_SIZE * 4
-#define CTX_COUNT 32
-
 
 #endif

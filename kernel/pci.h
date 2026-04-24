@@ -7,6 +7,7 @@ struct pci_func {
 	uint16_t vendor;
 	uint8_t class_code;
 	uint8_t subclass_code;
+	uint8_t prog_if;
 	uint8_t type;
 	bool multi_function;
 };

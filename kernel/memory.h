@@ -14,6 +14,11 @@ struct __attribute__ ((packed)) smap_entry {
 };
 
 typedef uint32_t mem_t;
+typedef mem_t paddr_t;
+typedef mem_t vaddr_t;
+
+
+typedef void(*func_ptr_t)(void);
 
 extern struct smap_entry *mmap_table;
 extern uint32_t *entry_count;

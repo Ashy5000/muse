@@ -64,11 +64,6 @@ struct scroll kmalloc_page() {
 	res.vaddr = 0;
 	res.size = 0;
 	while(1) {
-		kprint("Header at 0x");
-		kprint_int((uintptr_t)header, 16);
-		kprint(". Flags: ");
-		kprint_int(header->free, 10);
-		kprint(".\n");
 		if ((header->free & 1) == 0) {
 			if ((header->free & 2) > 0) {
 				break;

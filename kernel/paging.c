@@ -72,6 +72,18 @@ void map_page(vaddr_t vaddr, paddr_t paddr) {
 	modify_or_insert_page_structure((uint32_t*)(uintptr_t)(0xFFC00000 + (index * 0x400)), vaddr, paddr);
 }
 
+void unmap_page(vaddr_t vaddr) {
+	uint32_t *directory = (uint32_t*)0xFFFFF000;
+	uint32_t directory_idx = vaddr >> 22;
+	if (!is_present(directory[directory_idx])) {
+		// Table doesn't exist, nothing to unmap
+		return;
+	}
+	uint32_t *table = (uint32_t*)(uintptr_t)(0xFFC00000 + (directory_idx * 0x400));
+	uint32_t table_idx = (vaddr >> 12) & TEN_BITS;
+	table[table_idx] = set_present(table[table_idx], false);
+}
+
 void map_page_range_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages) {
 	for (int i = 0; i < pages; i++) {
 		map_page_inactive(directory, vaddr + (i * PAGE_SIZE), paddr + (i * PAGE_SIZE));
@@ -113,7 +125,7 @@ paddr_t init_paging() {
 	return (uintptr_t)directory;
 }
 
-paddr_t create_user_directory() {
+paddr_t create_task_directory(func_ptr_t func_ptr) {
 	paddr_t test = (uintptr_t)kpage_alloc();
 	struct scroll directory_scr = kmalloc_page();
 	uint32_t *directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
@@ -135,10 +147,25 @@ paddr_t create_user_directory() {
 	}
 
 	// Map the new stack
-	for (int i = TASK_STACK_BASE - TASK_STACK_SIZE + PAGE_SIZE; i <= TASK_STACK_BASE; i += PAGE_SIZE) {
+	for (int i = TASK_STACK_BASE - TASK_STACK_SIZE + PAGE_SIZE; i < TASK_STACK_BASE - PAGE_SIZE; i += PAGE_SIZE) {
 		paddr_t page_phys = (uintptr_t)kpage_alloc();
 		table_virt[(i >> 12) & TEN_BITS] = set_present(set_writeable(set_page(0, page_phys), true), true);
 	}
+	struct scroll stack_scr = kmalloc_page();
+	table_virt[((TASK_STACK_BASE - PAGE_SIZE) >> 12) & TEN_BITS] = set_present(set_writeable(set_page(0, stack_scr.aligned_backend.page), true), true);
+	// Fill the new stack
+	uint32_t *stack = (uint32_t*)(uintptr_t)(stack_scr.vaddr + PAGE_SIZE);
+	stack[-1] = (uintptr_t)func_ptr;
+	stack[-2] = 0; // EBX
+	stack[-3] = 0; // ESI
+	stack[-4] = 0; // EDI
+	stack[-5] = TASK_STACK_BASE; // EBP
+	paddr_t page_phys = (uintptr_t)kpage_alloc();
+	table_virt[(TASK_STACK_BASE >> 12) & TEN_BITS] = set_present(set_writeable(set_page(0, page_phys), true), true);
+
+	scroll_unmap(directory_scr);
+	scroll_unmap(table_scr);
+	scroll_unmap(stack_scr);
 
 	return directory_scr.aligned_backend.page;
 }

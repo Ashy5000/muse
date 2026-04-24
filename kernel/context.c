@@ -16,22 +16,11 @@ extern uint32_t tick_period;
 void create_kernel_context(func_ptr_t func_ptr, uint8_t priority) {
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
-	ctx_new->heap = (void*)TASK_STACK_BASE + 1;
+	ctx_new->heap = (void*)0x10000;
 	ctx_new->present = true;
-	ctx_new->page_directory = create_user_directory();
+	ctx_new->page_directory = create_task_directory(func_ptr);
 	ctx_new->priority = priority;
-	__asm__ volatile ("mov %0, %%cr3" :: "r"(ctx_new->page_directory) : );
-	uint32_t* stack = (uint32_t*)TASK_STACK_BASE;
-	stack[-1] = (uintptr_t)func_ptr;
-	stack[-2] = 0; // EBX
-	stack[-3] = 0; // ESI
-	stack[-4] = 0; // EDI
-	stack[-5] = TASK_STACK_BASE; // EBP
-	struct block_header *header = (void*)ctx_new->heap;
-	header->free = 3;
-	header->size = 0x1000; // TODO: Actually justify this somehow
-	__asm__ volatile ("mov %0, %%cr3" :: "r"(active_ctx->page_directory) : );
-	ctx_new->esp = (uintptr_t)(stack - 5);
+	ctx_new->esp = (uintptr_t)(TASK_STACK_BASE - (5 * sizeof(uint32_t)));
 	ctx_new->next = 0;
 	if (next_ctx == 0) {
 		next_ctx = ctx_new;

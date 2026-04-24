@@ -5,11 +5,31 @@
 #include "context.h"
 #include "../drivers/hpet.h"
 #include "pci.h"
-#include "scroll.h"
 
 extern struct context *active_ctx;
 
 void idle() {
+	unlock_scheduler();
+	for (;;) {
+		lock_scheduler();
+		preempt();
+		unlock_scheduler();
+	}
+}
+
+void test_inner() {
+	unlock_scheduler();
+	kprint("hi\n");
+	for (;;) {
+		lock_scheduler();
+		preempt();
+		unlock_scheduler();
+	}
+}
+
+void test() {
+	kprint("meow\n");
+	create_kernel_context(test_inner, 1);
 	unlock_scheduler();
 	for (;;) {
 		lock_scheduler();
@@ -32,7 +52,10 @@ int main() {
 
 	start_hpet();
 
+	lock_scheduler();
 	create_kernel_context(idle, 1);
+	create_kernel_context(test, 1);
+	unlock_scheduler();
 
 	for(;;) {
 		__asm__("hlt");

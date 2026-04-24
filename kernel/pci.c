@@ -32,6 +32,10 @@ uint8_t get_subclass(uint8_t bus, uint8_t slot, uint8_t func) {
 	return pci_config_read(bus, slot, func, 0x8) >> 16;
 }
 
+uint8_t get_prog_if(uint8_t bus, uint8_t slot, uint8_t func) {
+	return pci_config_read(bus, slot, func, 0x8) >> 8;
+}
+
 uint8_t get_revision(uint8_t bus, uint8_t slot, uint8_t func) {
 	return pci_config_read(bus, slot, func, 0x8);
 }
@@ -73,6 +77,7 @@ struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 		res.vendor = vendor;
 		res.class_code = get_class(bus, slot, func);
 		res.subclass_code = get_subclass(bus, slot, func);
+		res.prog_if = get_prog_if(bus, slot, func);
 		res.type = get_header_type(bus, slot, func);
 		res.multi_function = false;
 		if ((res.type & 0x80) != 0) {

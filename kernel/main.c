@@ -17,27 +17,6 @@ void idle() {
 	}
 }
 
-void test_inner() {
-	unlock_scheduler();
-	kprint("hi\n");
-	for (;;) {
-		lock_scheduler();
-		preempt();
-		unlock_scheduler();
-	}
-}
-
-void test() {
-	kprint("meow\n");
-	create_kernel_context(test_inner, 1);
-	unlock_scheduler();
-	for (;;) {
-		lock_scheduler();
-		preempt();
-		unlock_scheduler();
-	}
-}
-
 int main() {
 	init_console();
 	init_acpi();
@@ -54,7 +33,6 @@ int main() {
 
 	lock_scheduler();
 	create_kernel_context(idle, 1);
-	create_kernel_context(test, 1);
 	unlock_scheduler();
 
 	for(;;) {

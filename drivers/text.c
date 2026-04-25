@@ -103,3 +103,28 @@ void kprint_int(int x, int base) {
 		}
 	}
 }
+
+bool inrange(int base, int exp) {
+	int res = 1;
+	for (int i = 0; i < exp; i++) {
+		if (res * base < res) {
+			return false;
+		}
+		res *= base;
+	}
+	return true;
+}
+
+void kprint_int_full(int x, int base) {
+	for(int i = 0; i < base; i++) {
+		if (!inrange(base, base - 1 - i)) {
+			continue;
+		}
+		unsigned int digit = nth_digit(x, base - 1 - i, base);
+		if (digit < 10) {
+			kput_char('0' + digit);
+		} else {
+			kput_char('A' + digit - 10);
+		}
+	}
+}

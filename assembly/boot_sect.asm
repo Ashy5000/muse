@@ -27,6 +27,7 @@ BOOT_DRIVE:
 %include "print_string.asm"
 %include "memory.asm"
 %include "disk.asm"
+%include "tss.asm"
 %include "gdt.asm"
 %include "32protected.asm"
 

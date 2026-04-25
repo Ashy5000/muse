@@ -31,6 +31,9 @@ protected_init:
 	mov ebp, 0x9fbff ; Move stack to top of memory
 	mov esp, ebp
 
+	mov ax, 0x28 ; Load the TSS
+	ltr ax
+
 	call kernel_ascend
 	jmp $
 

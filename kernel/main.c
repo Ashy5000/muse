@@ -5,6 +5,7 @@
 #include "context.h"
 #include "../drivers/hpet.h"
 #include "pci.h"
+#include "ata.h"
 
 extern struct context *active_ctx;
 
@@ -27,6 +28,9 @@ int main() {
 	init_idt();
 	init_first_ctx();
 	init_memory(active_ctx);
+
+	register_ata();
+
 	init_pci();
 
 	start_hpet();

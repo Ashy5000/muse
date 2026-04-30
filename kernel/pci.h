@@ -3,6 +3,16 @@
 
 #include <stdint.h>
 
+enum pci_bar_type {
+	PCI_BAR_MEM,
+	PCI_BAR_IO,
+};
+
+struct pci_bar {
+	enum pci_bar_type type;
+	uint32_t addr;
+};
+
 struct pci_func {
 	uint16_t vendor;
 	uint8_t class_code;
@@ -10,6 +20,7 @@ struct pci_func {
 	uint8_t prog_if;
 	uint8_t type;
 	bool multi_function;
+	struct pci_bar bars[6];
 };
 
 struct pci_dev {

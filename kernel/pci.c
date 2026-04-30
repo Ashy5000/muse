@@ -44,6 +44,21 @@ uint8_t get_secondary_bus(uint8_t bus, uint8_t slot, uint8_t func) {
 	return pci_config_read(bus, slot, func, 0x18) >> 8;
 }
 
+struct pci_bar get_bar(uint8_t bus, uint8_t slot, uint8_t func, uint8_t idx) {
+	struct pci_bar bar;
+	uint32_t reg = (pci_config_read(bus, slot, func, 0x10 + (idx * sizeof(uint32_t))));
+	if (reg & 0x1) {
+		// I/O space
+		bar.type = PCI_BAR_IO;
+		bar.addr = reg & 0xFFFFFFFC;
+	} else {
+		// Memory space
+		bar.type = PCI_BAR_MEM;
+		bar.addr = reg & 0xFFFFFFF0;
+	}
+	return bar;
+}
+
 struct pci_handler *first_handler;
 struct pci_handler *last_handler;
 
@@ -84,8 +99,16 @@ struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 			res.multi_function = true;
 			res.type &= ~0x80;
 		}
+		if (res.type == 0x0) {
+			for (uint32_t i = 0; i < 6; i++) {
+				res.bars[i] = get_bar(bus, slot, func, i);
+			}
+		}
 		if (res.type == 0x1) { // PCI-PCI bridge
 			scan_pci_bus(get_secondary_bus(bus, slot, func));
+			for (uint32_t i = 0; i < 2; i++) {
+				res.bars[i] = get_bar(bus, slot, func, i);
+			}
 		}
 		kprint("Found function with vendor 0x");
 		kprint_int(res.vendor, 16);

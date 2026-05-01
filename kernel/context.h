@@ -11,6 +11,7 @@ struct context {
 	struct context *next;
 	uint8_t priority;
 	uint32_t alarm;
+	uint32_t slices_remaining;
 };
 
 void create_kernel_context(func_ptr_t func_ptr, uint8_t priority);

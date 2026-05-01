@@ -72,7 +72,6 @@ void preempt() {
 	}
 }
 
-uint16_t acc;
 struct context *first_sleeping_ctx = 0;
 
 void handle_timer_inner() {
@@ -99,8 +98,16 @@ void handle_timer_inner() {
 		sleeping_ctx = sleeping_ctx->next;
 	}
 
+	active_ctx->slices_remaining--;
+	if (active_ctx->slices_remaining > 0) {
+		unlock_scheduler();
+		return;
+	}
+
 	// Preempt this task
 	preempt();
+
+	active_ctx->slices_remaining = active_ctx->priority;
 
 	uint32_t period_nano = tick_period / 1000000;
 	unlock_scheduler();

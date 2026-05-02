@@ -3,6 +3,7 @@
 #include "alloc.h"
 #include "io.h"
 #include "ata.h"
+#include "gpt.h"
 
 #define ATA_BUS_PRIMARY 0x1F0
 #define ATA_BUS_SECONDARY 0x170
@@ -200,7 +201,12 @@ struct ata_dev detect_drive(uint16_t bus, uint8_t drive) {
 			}
 		}
 	}
+
+	// Disable interrupts
 	outb(bus + ATA_CTRL_REG_CTRL, inb(bus + ATA_CTRL_REG_CTRL) | ATA_FLAG_NIEN);
+
+	init_gpt(dev);
+
 	return dev;
 }
 

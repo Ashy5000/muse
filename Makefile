@@ -17,16 +17,13 @@ kernel.bin: kernel_entry.o ${OBJS}
 disk.bin: boot_sect.bin kernel.bin
 	dd if=/dev/zero of=disk.bin bs=512 count=131072
 	sudo sh -c "yes | parted disk.bin mktable GPT"
-	sudo parted disk.bin mkpart MUSEKRN 2048s 4095s
-	sudo parted disk.bin mkpart MUSEFS 4096s 131000s 
+	sudo parted disk.bin mkpart MUSEKRN 2048s 4095s -a none
+	sudo parted disk.bin mkpart MUSEFS 4096s 131001s -a none
+	dd if=boot_sect.bin of=disk.bin bs=1 count=446 conv=notrunc
 	sudo losetup -D
-	sudo losetup /dev/loop0 disk.bin
-	sudo sh -c "cat boot_sect.bin > /dev/loop0"
-	sudo losetup /dev/loop1 disk.bin -o 2097152
-	sudo mke2fs /dev/loop1
-	sudo losetup -d /dev/loop1
-	sudo losetup /dev/loop1 disk.bin -o 1048576
-	sudo sh -c "cat kernel.bin > /dev/loop1"
+	sudo losetup /dev/loop0 disk.bin -o 2097152
+	sudo mke2fs /dev/loop0 63453k
+	dd if=kernel.bin of=disk.bin bs=512 seek=2048 count=64 conv=notrunc
 
 build: disk.bin
 

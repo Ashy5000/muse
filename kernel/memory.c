@@ -154,7 +154,7 @@ void init_memory(struct context *ctx) {
 	ctx->heap = (void*)0x10000;
 	struct block_header *header = ctx->heap;
 	header->free = 3;
-	header->size = 0x20000;
+	header->size = 0x30000; // TODO: actually base this on something
 
 	kprint("Memory initialization complete.\n");
 }

@@ -32,6 +32,6 @@ struct gpt_partition {
 };
 
 
-void init_gpt(struct ata_dev dev);
+void init_gpt(struct ata_dev *dev);
 
 #endif

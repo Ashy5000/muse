@@ -30,6 +30,6 @@ struct ata_dev {
 #define SECTOR_SIZE 512
 
 void register_ata();
-enum ata_res ata_transfer(struct ata_dev dev, uint32_t lba, uint8_t sector_count, uint16_t *data, enum ata_dir dir);
+enum ata_res ata_transfer(struct ata_dev *dev, uint32_t lba, uint8_t sector_count, uint16_t *data, enum ata_dir dir);
 
 #endif

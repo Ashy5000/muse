@@ -40,15 +40,6 @@ struct ext2_inode get_inode(struct ext2_superblock *superblock, struct ata_dev *
 	return res;
 }
 
-void get_block_from_inode(uint32_t block_size, struct ata_dev *dev, struct gpt_partition *partition, struct ext2_inode inode, uint32_t n, void *data) {
-	if (n < 12) {
-		uint32_t lba = partition->start_lba + (inode.direct_blocks[n] * block_size / SECTOR_SIZE);
-		ata_transfer(dev, lba, block_size / SECTOR_SIZE, data, ATA_READ);
-		return;
-	}
-	// TODO: Handle singly, doubly, and triply indirect blocks
-}
-
 void enumerate_children(struct vfs_inode *inode_v) {
 	struct ext2_vfs_payload *payload = inode_v->backend_data;
 	struct ext2_inode inode = payload->inode;
@@ -86,6 +77,45 @@ void enumerate_children(struct vfs_inode *inode_v) {
 	kfree(buf);
 }
 
+void get_block_from_inode(uint32_t block_size, struct ata_dev *dev, struct gpt_partition *partition, struct ext2_inode inode, uint32_t n, void *data) {
+	if (n < 12) {
+		uint32_t lba = partition->start_lba + (inode.direct_blocks[n] * block_size / SECTOR_SIZE);
+		ata_transfer(dev, lba, block_size / SECTOR_SIZE, data, ATA_READ);
+		return;
+	}
+	if (n < 12 + (block_size / sizeof(uint32_t))) {
+		// Singly indirect block
+		ata_transfer(dev, inode.indirect_block_single, block_size / SECTOR_SIZE, data, ATA_READ);
+		uint32_t lba = ((uint32_t*)data)[n - 12];
+		ata_transfer(dev, lba, block_size / SECTOR_SIZE, data, ATA_READ);
+		return;
+	}
+	// TODO: Handle doubly and triply indirect blocks
+}
+
+
+void ext2_read(struct vfs_inode *inode, uint32_t offset, uint32_t len, void *data) {
+	struct ext2_vfs_payload *payload = inode->backend_data;
+	uint32_t block_size = 1024 << payload->superblock->block_size_log;
+	uint32_t first_block = offset / block_size;
+	uint32_t last_block = (offset + len) / block_size;
+	uint32_t current_offset = first_block * block_size; // Will be the start of the block due to rounding
+	void *bfr = kmalloc(block_size);
+	for (uint32_t i = first_block; i <= last_block; i++) {
+		uint32_t skip = 0;
+		if (current_offset < offset) {
+			skip = current_offset;
+		}
+		uint32_t count = block_size;
+		if (current_offset + skip + count > offset + len) {
+			count -= current_offset + skip + count - (offset + len);
+		}
+		get_block_from_inode(block_size, payload->dev, payload->partition, payload->inode, i, bfr);
+		kmemcpy(data + current_offset - offset, bfr + skip, count);
+	}
+	kfree(bfr);
+}
+
 void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	struct vfs_inode child;
 	struct ext2_vfs_payload *child_payload = kmalloc(sizeof(struct ext2_vfs_payload));
@@ -98,6 +128,7 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	enumerate_children(&child);
 	child.present = true;
 	child.register_inode = ext2_register_inode;
+	child.read = ext2_read;
 	tchild->inode = child;
 }
 
@@ -133,14 +164,21 @@ bool detect_ext2(struct ata_dev *dev, struct gpt_partition *partition) {
 	inode.backend_data = payload;
 	inode.first_child = 0;
 	inode.register_inode = ext2_register_inode;
+	inode.read = ext2_read;
 	enumerate_children(&inode);
 	mount(inode, "/ext2");
 	// inode.register_inode(&inode, inode.first_child);
 	// struct vfs_inode dir = inode.first_child->inode;
-	struct vfs_inode test_file = open("/ext2/testdir/test.txt");
+	struct vfs_inode test_file = vfs_open("/ext2/testdir/test.txt");
 	if (test_file.present) {
 		kprint("Opened file!\n");
 	}
+	char *contents = kmalloc(11);
+	test_file.read(&test_file, 5, 3, contents);
+	for (uint32_t i = 0; i < 3; i++) {
+		kput_char(contents[i]);
+	}
+	kput_char('\n');
 
 	kfree(superblock);
 

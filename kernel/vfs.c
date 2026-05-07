@@ -15,7 +15,7 @@ void mount(struct vfs_inode inode, char *path) {
 	first_mount_point = mount_point;
 }
 
-struct vfs_inode open(char *path) {
+struct vfs_inode vfs_open(char *path) {
 	struct vfs_mount_point *mount_point = first_mount_point;
 	bool success = false;
 	char *start = path + 1; // Account for the '/' after mount point path

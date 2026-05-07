@@ -7,8 +7,8 @@
 struct vfs_inode;
 struct vfs_tnode;
 
-typedef void (*fn_read_t)(struct vfs_inode*, void*, uint32_t);
-typedef void (*fn_write_t)(struct vfs_inode*, void*, uint32_t);
+typedef void (*fn_read_t)(struct vfs_inode*, uint32_t, uint32_t, void*);
+typedef void (*fn_write_t)(struct vfs_inode*, uint32_t, uint32_t, void*);
 typedef void (*fn_register_inode_t)(struct vfs_inode*, struct vfs_tnode*);
 
 struct vfs_inode {
@@ -40,6 +40,6 @@ struct vfs_mount_point {
 };
 
 void mount(struct vfs_inode inode, char *path);
-struct vfs_inode open(char *path);
+struct vfs_inode vfs_open(char *path);
 
 #endif

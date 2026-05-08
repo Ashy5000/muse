@@ -14,7 +14,7 @@ struct context {
 	uint32_t slices_remaining;
 };
 
-void create_kernel_context(func_ptr_t func_ptr, uint8_t priority);
+void create_context(func_ptr_t func_ptr, uint8_t priority, bool user);
 void context_switch(struct context *ctx_new);
 void init_first_ctx(void);
 void lock_scheduler(void);
@@ -26,5 +26,7 @@ void sleep_secs(uint32_t seconds);
 
 #define TASK_STACK_BASE 0x9F000
 #define TASK_STACK_SIZE PAGE_SIZE * 4
+#define USER_STACK_BASE 0x200000
+#define USER_STACK_SIZE PAGE_SIZE * 4
 
 #endif

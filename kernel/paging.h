@@ -17,6 +17,6 @@ void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, 
 void map_page(vaddr_t vaddr, paddr_t paddr);
 void unmap_page(vaddr_t vaddr);
 uint32_t get_page_mapping(vaddr_t vaddr);
-paddr_t create_task_directory(func_ptr_t func_ptr);
+paddr_t create_task_directory(func_ptr_t func_ptr, bool user);
 
 #endif

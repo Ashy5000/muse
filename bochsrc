@@ -1,5 +1,5 @@
-floppya: 1_44="disk.bin", status=inserted
-boot:floppy
+ata0-master: type=disk, path="disk.bin"
+boot: disk
 display_library: x, options="gui_debug"
 pci: enabled=1, chipset=i440fx
 magic_break: enabled=1

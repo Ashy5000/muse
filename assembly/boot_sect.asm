@@ -27,10 +27,11 @@ BOOT_DRIVE:
 %include "print_string.asm"
 %include "memory.asm"
 %include "disk.asm"
-%include "tss.asm"
 %include "gdt.asm"
 %include "32protected.asm"
 
-times 510-($-$$) db 0 ; Pad boot sector to 510 bytes with zeroes
+times 406-($-$$) db 0 ; Pad with zeroes
+
+%include "tss.asm"
 
 dw 0xaa55 ; Add a magic number at the end of the file, bringing the length to 512 bytes

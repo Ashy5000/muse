@@ -30,8 +30,8 @@ struct __attribute__((packed)) idtr {
 
 struct idtr idtr_inst;
 
-void handle_exception(void) {
-	kprint("\n\n\nCritical exception: kernel will exit.\n");
+void handle_gpf(void) {
+	kprint("KERNEL PANIC\n============\nA General Protection Fault (GPF) was detected.\n");
 	__asm__ volatile ("cli; hlt");
 }
 
@@ -47,9 +47,7 @@ void idt_set_entry(int vector, void *isr) {
 }
 
 void init_idt(void) {
-	// for (int i = 0; i < 32; i++) {
-	// 	isrs[i] = handle_exception;
-	// }
+	isrs[0xD] = handle_gpf;
 	isrs[0x31] = handle_keypress;
 	isrs[0x30 + timer_irq] = handle_timer;
 	// isrs[0x0E] = handle_page_fault;

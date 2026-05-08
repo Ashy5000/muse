@@ -6,8 +6,21 @@
 #include "../drivers/hpet.h"
 #include "pci.h"
 #include "ata.h"
+#include "userspace.h"
 
 extern struct context *active_ctx;
+
+void user_side() {
+	for (;;) {
+		kput_char(' ');
+	}
+}
+
+void kernel_side() {
+	unlock_scheduler();
+	enter_ring3(user_side);
+	for (;;) {}
+}
 
 void idle() {
 	unlock_scheduler();
@@ -15,6 +28,13 @@ void idle() {
 		lock_scheduler();
 		preempt();
 		unlock_scheduler();
+	}
+}
+
+void rando_task() {
+	unlock_scheduler();
+	for (;;) {
+		kput_char('#');
 	}
 }
 
@@ -36,7 +56,9 @@ int main() {
 	start_hpet();
 
 	lock_scheduler();
-	create_kernel_context(idle, 1);
+	create_context(idle, 1, false);
+	create_context(rando_task, 1, false);
+	create_context(kernel_side, 1, true);
 	unlock_scheduler();
 
 	for(;;) {

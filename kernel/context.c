@@ -2,6 +2,7 @@
 #include "alloc.h"
 #include "../drivers/hpet.h"
 #include "apic.h"
+#include "../drivers/text.h"
 
 struct context *active_ctx = 0;
 struct context *next_ctx = 0;
@@ -13,13 +14,14 @@ extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 
 extern uint32_t tick_period;
 
-void create_kernel_context(func_ptr_t func_ptr, uint8_t priority) {
+void create_context(func_ptr_t func_ptr, uint8_t priority, bool user) {
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
+	ctx_new->priority = priority;
 	ctx_new->heap = (void*)0x10000;
 	ctx_new->present = true;
-	ctx_new->page_directory = create_task_directory(func_ptr);
-	ctx_new->priority = priority;
+	ctx_new->page_directory = create_task_directory(func_ptr, user);
+	ctx_new->slices_remaining = 0;
 	ctx_new->esp = (uintptr_t)(TASK_STACK_BASE - (5 * sizeof(uint32_t)));
 	ctx_new->next = 0;
 	if (next_ctx == 0) {
@@ -98,6 +100,9 @@ void handle_timer_inner() {
 		sleeping_ctx = sleeping_ctx->next;
 	}
 
+	if (active_ctx->slices_remaining == 0) {
+		active_ctx->slices_remaining = active_ctx->priority;
+	}
 	active_ctx->slices_remaining--;
 	if (active_ctx->slices_remaining > 0) {
 		unlock_scheduler();
@@ -106,8 +111,6 @@ void handle_timer_inner() {
 
 	// Preempt this task
 	preempt();
-
-	active_ctx->slices_remaining = active_ctx->priority;
 
 	uint32_t period_nano = tick_period / 1000000;
 	unlock_scheduler();

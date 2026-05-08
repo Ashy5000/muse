@@ -98,20 +98,20 @@ void ext2_read(struct vfs_inode *inode, uint32_t offset, uint32_t len, void *dat
 	struct ext2_vfs_payload *payload = inode->backend_data;
 	uint32_t block_size = 1024 << payload->superblock->block_size_log;
 	uint32_t first_block = offset / block_size;
-	uint32_t last_block = (offset + len) / block_size;
-	uint32_t current_offset = first_block * block_size; // Will be the start of the block due to rounding
 	void *bfr = kmalloc(block_size);
-	for (uint32_t i = first_block; i <= last_block; i++) {
+	uint32_t block = 0;
+	for (uint32_t current_offset = first_block; current_offset < offset + len; current_offset += block_size) {
 		uint32_t skip = 0;
 		if (current_offset < offset) {
-			skip = current_offset;
+			skip = offset;
 		}
 		uint32_t count = block_size;
 		if (current_offset + skip + count > offset + len) {
 			count -= current_offset + skip + count - (offset + len);
 		}
-		get_block_from_inode(block_size, payload->dev, payload->partition, payload->inode, i, bfr);
-		kmemcpy(data + current_offset - offset, bfr + skip, count);
+		get_block_from_inode(block_size, payload->dev, payload->partition, payload->inode, block, bfr);
+		kmemcpy(data + current_offset + skip - offset, bfr + skip, count);
+		block++;
 	}
 	kfree(bfr);
 }
@@ -169,16 +169,16 @@ bool detect_ext2(struct ata_dev *dev, struct gpt_partition *partition) {
 	mount(inode, "/ext2");
 	// inode.register_inode(&inode, inode.first_child);
 	// struct vfs_inode dir = inode.first_child->inode;
-	struct vfs_inode test_file = vfs_open("/ext2/testdir/test.txt");
-	if (test_file.present) {
-		kprint("Opened file!\n");
-	}
-	char *contents = kmalloc(11);
-	test_file.read(&test_file, 5, 3, contents);
-	for (uint32_t i = 0; i < 3; i++) {
-		kput_char(contents[i]);
-	}
-	kput_char('\n');
+	// struct vfs_inode test_file = vfs_open("/ext2/testdir/test.txt");
+	// if (test_file.present) {
+	// 	kprint("Opened file!\n");
+	// }
+	// char *contents = kmalloc(11);
+	// test_file.read(&test_file, 5, 3, contents);
+	// for (uint32_t i = 0; i < 3; i++) {
+	// 	kput_char(contents[i]);
+	// }
+	// kput_char('\n');
 
 	kfree(superblock);
 

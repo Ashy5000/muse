@@ -2,7 +2,6 @@
 #include "alloc.h"
 #include "../drivers/hpet.h"
 #include "apic.h"
-#include "../drivers/text.h"
 
 struct context *active_ctx = 0;
 struct context *next_ctx = 0;
@@ -18,7 +17,11 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user) {
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
 	ctx_new->priority = priority;
-	ctx_new->heap = (void*)0x10000;
+	if (user) {
+		ctx_new->heap = (void*)USER_STACK_BASE + 1;
+	} else {
+		ctx_new->heap = (void*)0x10000;
+	}
 	ctx_new->present = true;
 	ctx_new->page_directory = create_task_directory(func_ptr, user);
 	ctx_new->slices_remaining = 0;

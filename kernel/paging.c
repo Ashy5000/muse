@@ -177,9 +177,6 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user) {
 	if (user) {
 		// Map the user stack
 		for (uint32_t i = USER_STACK_BASE - USER_STACK_SIZE; i <= USER_STACK_BASE; i += PAGE_SIZE) {
-			kprint("Mapping 0x");
-			kprint_int(i, 16);
-			kprint(".\n");
 			paddr_t page_phys = (uintptr_t)kpage_alloc();
 			table_virt[(i >> 12) & TEN_BITS] = set_user(set_present(set_writeable(set_page(0, page_phys), true), true), true);
 		}

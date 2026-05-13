@@ -11,7 +11,9 @@ void fuse_blocks(struct block_header *header) {
 		return;
 	}
 	struct block_header *header_next = (struct block_header*)((uintptr_t)header + sizeof(struct block_header) + header->size);
-	if ((header_next->free & 1) > 0) {
+	if (!get_page_mapping((uintptr_t)header_next)) {
+		header->size = ((uintptr_t)header_next + PAGE_SIZE - ((uintptr_t)header_next % PAGE_SIZE)) - (uintptr_t)header;
+	} else if ((header_next->free & 1) > 0) {
 		header->size += sizeof(struct block_header) + header_next->size;
 	}
 	header->free = 1;
@@ -29,7 +31,6 @@ void *kmalloc(vaddr_t size) {
 			block += header->size + sizeof(struct block_header);
 			continue;
 		}
-		fuse_blocks(header);
 		if (header->size >= size) {
 			for (vaddr_t vaddr = (uintptr_t)header & ADDR_MASK; vaddr < (uintptr_t)header + header->size; vaddr += PAGE_SIZE) {
 				if (!get_page_mapping(vaddr)) {
@@ -57,12 +58,8 @@ void *kmalloc(vaddr_t size) {
 	return 0;
 }
 
-struct scroll kmalloc_page() {
+void *kmalloc_aligned() {
 	struct block_header *header = active_ctx->heap;
-	struct scroll res;
-	res.type = SCROLL_FAILED;
-	res.vaddr = 0;
-	res.size = 0;
 	while(1) {
 		if ((header->free & 1) == 0) {
 			if ((header->free & 2) > 0) {
@@ -71,7 +68,6 @@ struct scroll kmalloc_page() {
 			header = (struct block_header*)((uintptr_t)header + header->size + sizeof(struct block_header));
 			continue;
 		}
-		fuse_blocks(header);
 		vaddr_t page_start = (uintptr_t)header + PAGE_SIZE - ((uintptr_t)header % PAGE_SIZE);
 		vaddr_t page_end = page_start + PAGE_SIZE;
 		vaddr_t header_start = page_start - sizeof(struct block_header);
@@ -80,16 +76,10 @@ struct scroll kmalloc_page() {
 			page_end += PAGE_SIZE;
 			header_start += PAGE_SIZE;
 		}
-		paddr_t page;
 		if (header->size >= PAGE_SIZE) {
 			vaddr_t header_page_start = header_start - (header_start % PAGE_SIZE);
 			if (!get_page_mapping(header_page_start)) {
 				map_page(header_page_start, (uintptr_t)kpage_alloc());
-			}
-			page = get_page_mapping(page_start);
-			if (!page) {
-				page = (uintptr_t)kpage_alloc();
-				map_page(page_start, page);
 			}
 			struct block_header *page_header = (struct block_header*)(uintptr_t)header_start;
 			page_header->free = 0;
@@ -113,19 +103,34 @@ struct scroll kmalloc_page() {
 				page_header->size = PAGE_SIZE;
 			}
 			header->size = header_start - (uintptr_t)header - sizeof(struct block_header);
-			res.vaddr = page_start;
-			res.size = PAGE_SIZE;
-			res.type = SCROLL_ALIGNED;
-			res.aligned_backend.page = page;
-			return res;
+			return (void*)(uintptr_t)page_start;
 		}
 		header = (struct block_header*)((uintptr_t)header + header->size + sizeof(struct block_header));
 	}
 	kprint("kmalloc_page() failed: out of memory!\n");
-	return res;
+	return 0;
+}
+
+struct scroll kmalloc_page() {
+	uint32_t page_addr = (uintptr_t)kmalloc_aligned();
+	struct scroll scr;
+	scr.size = 0;
+	scr.type = SCROLL_FAILED;
+	scr.aligned_backend.page = 0;
+	scr.vaddr = 0;
+	if (!page_addr) {
+		return scr;
+	}
+	scr.size = PAGE_SIZE;
+	scr.type = SCROLL_ALIGNED;
+	scr.aligned_backend.page = get_page_mapping(page_addr);
+	scr.vaddr = page_addr;
+	map_page(scr.vaddr, scr.aligned_backend.page);
+	return scr;
 }
 
 void kfree(void *p) {
 	struct block_header *header = (struct block_header*)p - 1;
-	header->free = 1;
+	header->free |= 1;
+	fuse_blocks(header);
 }

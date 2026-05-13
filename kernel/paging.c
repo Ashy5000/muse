@@ -76,6 +76,7 @@ void map_page_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr) {
 }
 
 void map_page(vaddr_t vaddr, paddr_t paddr) {
+	__asm__ volatile ("invlpg (%0)" :: "r"(vaddr) : "memory" );
 	uint32_t index = check_or_insert_table_structure((uint32_t*)0xFFFFF000, vaddr, true);
 	modify_or_insert_page_structure((uint32_t*)(uintptr_t)(0xFFC00000 + (index * 0x400)), vaddr, paddr, true);
 }
@@ -90,6 +91,7 @@ void unmap_page(vaddr_t vaddr) {
 	uint32_t *table = (uint32_t*)(uintptr_t)(0xFFC00000 + (directory_idx * 0x400));
 	uint32_t table_idx = (vaddr >> 12) & TEN_BITS;
 	table[table_idx] = set_present(table[table_idx], false);
+	__asm__ volatile ("invlpg (%0)" :: "r"(vaddr) : "memory" );
 }
 
 void map_page_range_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages) {
@@ -117,6 +119,9 @@ void enable_paging(uint32_t* directory) {
 paddr_t init_paging() {
 	kprint("Building paging structures...\n");
 	uint32_t* directory = kpage_alloc();
+	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
+		directory[i] = 0;
+	}
 	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
 	for (int i = 0; i < *entry_count; i++) {
 		uint32_t bitmap_count = ((uint32_t*)(uintptr_t)(mmap_table[i].addr_low))[0];
@@ -133,7 +138,7 @@ paddr_t init_paging() {
 	return (uintptr_t)directory;
 }
 
-paddr_t create_task_directory(func_ptr_t func_ptr, bool user) {
+paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *scrolls, uint32_t alloc_count) {
 	paddr_t test = (uintptr_t)kpage_alloc();
 	struct scroll directory_scr = kmalloc_page();
 	uint32_t *directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
@@ -150,8 +155,6 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user) {
 	uint32_t* table_virt = (uint32_t*)(uintptr_t)table_scr.vaddr;
 
 	directory_virt[0] = set_user(set_present(set_writeable(set_page(0, table_scr.aligned_backend.page), true), true), true);
-
-	scroll_unmap(directory_scr);
 
 	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
 		table_virt[i] = table_active[i];
@@ -182,8 +185,29 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user) {
 		}
 	}
 
-	scroll_unmap(stack_scr);
+	for (uint32_t i = 0; i < alloc_count; i++) { // TODO: Optimize this so the same tables don't have to be allocated multiple times
+		uint32_t directory_index = (scrolls[i].vaddr >> 22) & TEN_BITS;
+		uint32_t *alloc_table_virt = table_virt;
+		struct scroll alloc_table_scr;
+		if (directory_index > 0) {
+			if (directory_virt[directory_index]) {
+				continue;
+			} else {
+				alloc_table_scr = kmalloc_page();
+				alloc_table_virt = (uint32_t*)(uintptr_t)alloc_table_scr.vaddr;
+				directory_virt[directory_index] = set_user(set_present(set_writeable(set_page(0, alloc_table_scr.aligned_backend.page), true), true), true);
+			}
+		}
+		uint32_t table_index = (scrolls[i].vaddr >> 12) & TEN_BITS;
+		alloc_table_virt[table_index] = set_user(set_present(set_writeable(set_page(0, scrolls[i].aligned_backend.page), true), true), true);
+		if (directory_index > 0) {
+			scroll_unmap(alloc_table_scr);
+		}
+	}
+
 	scroll_unmap(table_scr);
+	scroll_unmap(stack_scr);
+	scroll_unmap(directory_scr);
 
 	return directory_scr.aligned_backend.page;
 }

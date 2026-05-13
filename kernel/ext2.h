@@ -103,6 +103,6 @@ struct ext2_vfs_payload {
 	struct ext2_superblock *superblock;
 };
 
-bool detect_ext2(struct ata_dev *dev, struct gpt_partition *partition);
+bool detect_ext2(struct ata_dev *dev, struct gpt_partition partition);
 
 #endif

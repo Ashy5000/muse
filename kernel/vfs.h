@@ -15,6 +15,8 @@ struct vfs_inode {
 	bool present;
 	uint32_t refs;
 
+	uint32_t size;
+
 	void *backend_data;
 
 	fn_read_t read;

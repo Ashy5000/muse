@@ -11,10 +11,18 @@ func_ptr_t userspace_runway;
 
 extern void jump_ring3(void);
 
-void enter_ring3(func_ptr_t func_ptr) {
-	tss[1] = TASK_STACK_BASE; // Doesn't matter if this overwrites data- this function never returns.
-	// __asm__ volatile ("mov $0x28, %%ax; ltr %%ax" ::: "%ax");
+void load_user_entry(func_ptr_t func_ptr) {
 	userspace_runway = func_ptr;
+}
+
+// ONLY USE THIS FUNCTION TO INIT CTXS.
+// It unlocks the scheduler when it runs.
+void enter_ring3() {
+	unlock_scheduler();
+	tss[1] = TASK_STACK_BASE; // Doesn't matter if this overwrites data- this function never returns.
+	kprint("Entering ring 3! Runway func at 0x");
+	kprint_int((uintptr_t)userspace_runway, 16);
+	kprint(".\n");
 	jump_ring3();
-	// __builtin_unreachable();
+	// TODO: Make unreachable/no return
 }

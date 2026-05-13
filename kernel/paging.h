@@ -1,8 +1,7 @@
 #ifndef PAGING_H
 #define PAGING_H
 
-#include "memory.h"
-#include "context.h"
+#include "scroll.h"
 
 #include <stdint.h>
 
@@ -17,6 +16,6 @@ void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, 
 void map_page(vaddr_t vaddr, paddr_t paddr);
 void unmap_page(vaddr_t vaddr);
 uint32_t get_page_mapping(vaddr_t vaddr);
-paddr_t create_task_directory(func_ptr_t func_ptr, bool user);
+paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *scrolls, uint32_t alloc_count);
 
 #endif

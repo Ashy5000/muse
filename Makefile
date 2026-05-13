@@ -32,7 +32,7 @@ $(AS) $< -o $@ -g
 endef
 
 $(BUILD_DIR)/boot_sect.bin: bootloader/
-	cd bootloader; nasm boot_sect.asm -f bin -o ../$(BUILD_DIR)boot_sect.bin
+	cd bootloader; nasm boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
 
 $(BUILD_DIR)/%.o: %.c
 	$(compile-c)
@@ -57,8 +57,8 @@ disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin fs
 	sudo sh -c "yes | parted disk.bin mktable GPT"
 	sudo parted disk.bin mkpart MUSEKRN 2048s 4095s -a none
 	sudo parted disk.bin mkpart MUSEFS 4096s 131001s -a none
-	dd if=boot_sect.bin of=disk.bin bs=1 count=446 conv=notrunc
-	dd if=kernel.bin of=disk.bin bs=512 seek=2048 count=64 conv=notrunc
+	dd if=$(BUILD_DIR)/boot_sect.bin of=disk.bin bs=1 count=446 conv=notrunc
+	dd if=$(BUILD_DIR)/kernel.bin of=disk.bin bs=512 seek=2048 count=64 conv=notrunc
 	sudo umount /dev/loop0 -q; exit 0
 	sudo losetup -D
 	sudo losetup /dev/loop0 disk.bin -o 2097152

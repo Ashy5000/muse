@@ -129,10 +129,13 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	child.present = true;
 	child.register_inode = ext2_register_inode;
 	child.read = ext2_read;
+	child.size = child_payload->inode.size_lo;
 	tchild->inode = child;
 }
 
-bool detect_ext2(struct ata_dev *dev, struct gpt_partition *partition) {
+bool detect_ext2(struct ata_dev *dev, struct gpt_partition partition_p) {
+	struct gpt_partition *partition = kmalloc(sizeof(*partition));
+	*partition = partition_p;
 	struct ext2_superblock *superblock = kmalloc(SECTOR_SIZE * 2);
 	ata_transfer(dev, partition->start_lba + 2, 2, (uint16_t*)superblock, ATA_READ);
 	if (superblock->signature != 0xef53) {
@@ -167,20 +170,6 @@ bool detect_ext2(struct ata_dev *dev, struct gpt_partition *partition) {
 	inode.read = ext2_read;
 	enumerate_children(&inode);
 	mount(inode, "/ext2");
-	// inode.register_inode(&inode, inode.first_child);
-	// struct vfs_inode dir = inode.first_child->inode;
-	// struct vfs_inode test_file = vfs_open("/ext2/testdir/test.txt");
-	// if (test_file.present) {
-	// 	kprint("Opened file!\n");
-	// }
-	// char *contents = kmalloc(11);
-	// test_file.read(&test_file, 5, 3, contents);
-	// for (uint32_t i = 0; i < 3; i++) {
-	// 	kput_char(contents[i]);
-	// }
-	// kput_char('\n');
-
-	kfree(superblock);
 
 	return true;
 }

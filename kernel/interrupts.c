@@ -51,6 +51,7 @@ void idt_set_entry(int vector, void *isr, bool user) {
 
 void init_idt(void) {
 	idt_set_entry(0xD, handle_gpf, false);
+	idt_set_entry(0xE, handle_gpf, false);
 	idt_set_entry(0x31, handle_keypress, false);
 	idt_set_entry(0x30 + timer_irq, handle_timer, false);
 	idt_set_entry(0x80, syscall_isr, true);

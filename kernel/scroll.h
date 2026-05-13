@@ -1,7 +1,7 @@
 #ifndef SCROLL_H
 #define SCROLL_H
 
-#include "paging.h"
+#include "memory.h"
 
 enum scroll_type {
 	SCROLL_FAILED, SCROLL_ALIGNED,

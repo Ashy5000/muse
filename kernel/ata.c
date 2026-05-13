@@ -148,11 +148,11 @@ enum ata_res ata_transfer(struct ata_dev *dev, uint32_t lba, uint8_t sector_coun
 	return ATA_SUCCESS;
 }
 
-struct ata_dev detect_drive(uint16_t bus, uint8_t drive) {
-	struct ata_dev dev;
-	dev.bus = bus;
-	dev.drive = drive;
-	dev.status = ATA_ERR_NO_DRIVE;
+struct ata_dev *detect_drive(uint16_t bus, uint8_t drive) {
+	struct ata_dev *dev = kmalloc(sizeof(*dev));
+	dev->bus = bus;
+	dev->drive = drive;
+	dev->status = ATA_ERR_NO_DRIVE;
 	outb(bus + ATA_REG_DRIVE, drive);
 	for (uint16_t port = bus + ATA_REG_SECT_CNT; port <= bus + ATA_REG_LBA_HI; port++) {
 		outb(port, 0);
@@ -165,7 +165,7 @@ struct ata_dev detect_drive(uint16_t bus, uint8_t drive) {
 	while ((inb(bus + ATA_REG_STAT) & ATA_FLAG_BSY) > 0) {
 		polls++;
 		if (polls > MAX_POLLS) {
-			dev.status = ATA_ERR_TIMEOUT;
+			dev->status = ATA_ERR_TIMEOUT;
 			return dev;
 		}
 	}
@@ -176,28 +176,28 @@ struct ata_dev detect_drive(uint16_t bus, uint8_t drive) {
 	while ((inb(bus + ATA_REG_STAT) & ATA_FLAG_DRQ) == 0 && (inb(bus + ATA_REG_STAT) & ATA_FLAG_ERR) == 0) {
 		polls++;
 		if (polls > MAX_POLLS) {
-			dev.status = ATA_ERR_TIMEOUT;
+			dev->status = ATA_ERR_TIMEOUT;
 			return dev;
 		}
 	}
 	if ((inb(bus + ATA_REG_STAT) & 0x1) > 0) {
 		return dev;
 	}
-	dev.status = ATA_SUCCESS;
+	dev->status = ATA_SUCCESS;
 	for (uint32_t i = 0; i < 256; i++) {
 		uint16_t data = inw(bus + ATA_REG_DATA);
 		if (i == 83) {
 			if (data & 0x400) {
-				dev.lba48 = true;
+				dev->lba48 = true;
 			}
 		}
 		if (i == 60) {
-			dev.lba_28_sector_count = data << 16;
+			dev->lba_28_sector_count = data << 16;
 		}
 		if (i == 61) {
-			dev.lba_28_sector_count |= data;
-			if (dev.lba_28_sector_count) {
-				dev.lba28 = true;
+			dev->lba_28_sector_count |= data;
+			if (dev->lba_28_sector_count) {
+				dev->lba28 = true;
 			}
 		}
 	}
@@ -205,7 +205,7 @@ struct ata_dev detect_drive(uint16_t bus, uint8_t drive) {
 	// Disable interrupts
 	outb(bus + ATA_CTRL_REG_CTRL, inb(bus + ATA_CTRL_REG_CTRL) | ATA_FLAG_NIEN);
 
-	init_gpt(&dev);
+	init_gpt(dev);
 
 	return dev;
 }

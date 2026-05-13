@@ -1,6 +1,5 @@
 #include "vfs.h"
 #include "alloc.h"
-#include "../drivers/text.h"
 
 struct vfs_mount_point *first_mount_point = 0;
 

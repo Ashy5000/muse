@@ -19,6 +19,7 @@ _start:
 	call main // Start of program
 	
 	mov %eax, %edi // Store exit code
+	call exit
 	// TODO: Exit
 
 .size _start, . - _start // Store size of _start symbol

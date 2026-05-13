@@ -13,17 +13,17 @@ extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 
 extern uint32_t tick_period;
 
-void create_context(func_ptr_t func_ptr, uint8_t priority, bool user) {
+void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scroll *scrolls, uint32_t alloc_count) {
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
 	ctx_new->priority = priority;
 	if (user) {
-		ctx_new->heap = (void*)USER_STACK_BASE + 1;
+		ctx_new->heap = 0;
 	} else {
 		ctx_new->heap = (void*)0x10000;
 	}
 	ctx_new->present = true;
-	ctx_new->page_directory = create_task_directory(func_ptr, user);
+	ctx_new->page_directory = create_task_directory(func_ptr, user, scrolls, alloc_count);
 	ctx_new->slices_remaining = 0;
 	ctx_new->esp = (uintptr_t)(TASK_STACK_BASE - (5 * sizeof(uint32_t)));
 	ctx_new->next = 0;

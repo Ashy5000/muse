@@ -27,7 +27,7 @@ void init_gpt(struct ata_dev *dev) {
 			kprint("-0x");
 			kprint_int(partitions[j].end_lba, 16);
 			kprint(".\n");
-			detect_ext2(dev, partitions + j);
+			detect_ext2(dev, partitions[j]);
 		}
 		kfree(partitions);
 	}

@@ -2,6 +2,7 @@
 #include "alloc.h"
 #include "../drivers/hpet.h"
 #include "apic.h"
+#include "../drivers/text.h"
 
 struct context *active_ctx = 0;
 struct context *next_ctx = 0;
@@ -13,7 +14,7 @@ extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 
 extern uint32_t tick_period;
 
-void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scroll *scrolls, uint32_t alloc_count) {
+void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scroll *first_scr) {
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
 	ctx_new->priority = priority;
@@ -23,7 +24,7 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scr
 		ctx_new->heap = (void*)0x10000;
 	}
 	ctx_new->present = true;
-	ctx_new->page_directory = create_task_directory(func_ptr, user, scrolls, alloc_count);
+	ctx_new->page_directory = create_task_directory(func_ptr, user, first_scr);
 	ctx_new->slices_remaining = 0;
 	ctx_new->esp = (uintptr_t)(TASK_STACK_BASE - (5 * sizeof(uint32_t)));
 	ctx_new->next = 0;
@@ -132,6 +133,12 @@ void sleep_millis(uint32_t millis) {
 
 void sleep_secs(uint32_t seconds) {
 	sleep_millis(seconds * 1000);
+}
+
+void terminate() {
+	kprint("Terminating process.\n");
+	lock_scheduler();
+	schedule();
 }
 
 __asm__ (

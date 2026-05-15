@@ -16,6 +16,7 @@ struct scroll {
 	vaddr_t size;
 	enum scroll_type type;
 	struct scroll_aligned_backend aligned_backend;
+	struct scroll *next;
 };
 
 void scroll_unmap(struct scroll scr);

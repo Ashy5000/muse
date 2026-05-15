@@ -52,7 +52,14 @@ void *kmalloc(vaddr_t size) {
 			vaddr_t begin = (uintptr_t)header + sizeof(struct block_header);
 			return (void*)(uintptr_t)begin;
 		}
-		block += header->size + sizeof(struct block_header);
+		uint32_t new_block = (uintptr_t)block + header->size + sizeof(struct block_header);
+		if (get_page_mapping(new_block)) {
+			// Next header exists, everything is fine
+			block = (void*)(uintptr_t)new_block;
+		} else {
+			// Next header doesn't exist. Expand the current header to contain it and try to claim this header again.
+			header->size = (new_block + PAGE_SIZE - (new_block % PAGE_SIZE)) - (uintptr_t)block - sizeof(struct block_header);
+		}
 	}
 	kprint("kmalloc() failed: out of memory!\n");
 	return 0;
@@ -87,7 +94,7 @@ void *kmalloc_aligned() {
 				page_header->free = 2;
 				header->free = 1;
 			}
-			page_header->size = (uintptr_t)header + header->size - page_start;
+			page_header->size = PAGE_SIZE;
 			struct block_header *excess_header = (struct block_header*)(uintptr_t)(page_end);
 			vaddr_t excess_page = (uintptr_t)excess_header - ((uintptr_t)excess_header % PAGE_SIZE);
 			if ((uintptr_t)(excess_header + 1) < (uintptr_t)header + header->size) {
@@ -105,9 +112,14 @@ void *kmalloc_aligned() {
 			header->size = header_start - (uintptr_t)header - sizeof(struct block_header);
 			return (void*)(uintptr_t)page_start;
 		}
-		header = (struct block_header*)((uintptr_t)header + header->size + sizeof(struct block_header));
+		void *new_header = (void*)((uintptr_t)header + header->size + sizeof(struct block_header));
+		if (get_page_mapping((uintptr_t)new_header)) {
+			header = new_header;
+		} else {
+			header->size = (uintptr_t)((new_header + PAGE_SIZE - ((uintptr_t)new_header % PAGE_SIZE)) - (uintptr_t)header - sizeof(struct block_header));
+		}
 	}
-	kprint("kmalloc_page() failed: out of memory!\n");
+	kprint("kmalloc_aligned() failed: out of memory!\n");
 	return 0;
 }
 
@@ -124,6 +136,10 @@ struct scroll kmalloc_page() {
 	scr.size = PAGE_SIZE;
 	scr.type = SCROLL_ALIGNED;
 	scr.aligned_backend.page = get_page_mapping(page_addr);
+	if (!scr.aligned_backend.page) {
+		scr.aligned_backend.page = (uintptr_t)kpage_alloc();
+		map_page(page_addr, scr.aligned_backend.page);
+	}
 	scr.vaddr = page_addr;
 	map_page(scr.vaddr, scr.aligned_backend.page);
 	return scr;

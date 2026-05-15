@@ -20,6 +20,6 @@ _start:
 	
 	mov %eax, %edi // Store exit code
 	call exit
-	// TODO: Exit
+	jmp .
 
 .size _start, . - _start // Store size of _start symbol

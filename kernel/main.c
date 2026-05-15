@@ -7,8 +7,6 @@
 #include "pci.h"
 #include "ata.h"
 #include "syscall.h"
-// #include "userspace.h"
-// #include "alloc.h"
 #include "elf.h"
 
 extern struct context *active_ctx;
@@ -42,9 +40,9 @@ int main() {
 
 	load_elf("/ext2/bin/test.o");
 
-	// lock_scheduler();
-	// create_context(idle, 1, false, 0, 0);
-	// unlock_scheduler();
+	lock_scheduler();
+	create_context(idle, 1, false, 0);
+	unlock_scheduler();
 
 	for(;;) {
 		__asm__("hlt");

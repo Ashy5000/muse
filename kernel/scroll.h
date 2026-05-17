@@ -20,5 +20,6 @@ struct scroll {
 };
 
 void scroll_unmap(struct scroll scr);
+struct scroll *insert_scroll(struct scroll *scr, struct scroll *first_scr);
 
 #endif

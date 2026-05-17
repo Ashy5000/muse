@@ -2,7 +2,7 @@
 #include "acpi.h"
 #include "../drivers/text.h"
 
-char rsdp_signature[8] = "RSD PTR ";
+__attribute__ ((nonstring)) char rsdp_signature[8] = "RSD PTR ";
 
 struct rsdp *rsdp_global;
 void *rsdt_global;

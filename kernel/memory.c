@@ -12,8 +12,8 @@ extern void *hpet_limit;
 uint32_t reserved_pages_count = 0;
 uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
-void kmemcpy(void *dst, void *src, mem_t size) {
-	for (int i = 0; i < size; i++) {
+void memcpy(void *dst, void *src, mem_t size) {
+	for (uint32_t i = 0; i < size; i++) {
 		((char*)dst)[i] = ((char*)src)[i];
 	}
 }
@@ -28,7 +28,7 @@ uint32_t erase_unusable_regions(uint32_t entry_count) {
 		if (mmap_table[i].type == 1 && mmap_table[i].addr_low > 0) {
 			i++;
 		} else {
-			kmemcpy(mmap_table + i, mmap_table + i + 1, sizeof(struct smap_entry) * (entry_count_new - i - 1));
+			memcpy(mmap_table + i, mmap_table + i + 1, sizeof(struct smap_entry) * (entry_count_new - i - 1));
 			entry_count_new--;
 		}
 	}

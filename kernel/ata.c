@@ -46,7 +46,7 @@ bool detect_float(uint16_t bus) {
 }
 
 enum ata_res poll_data(struct ata_dev *dev) {
-	uint32_t polls;
+	uint32_t polls = 0;
 	for (;;) {
 		polls++;
 		if (polls >= MAX_POLLS) {
@@ -81,7 +81,7 @@ enum ata_res select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_cou
 	}
 	outb(dev->bus + ATA_REG_DRIVE, dev->drive | ((lba >> 24) & 0xf) | 0xE0);
 	delay_400ns(dev);
-	if (inb(dev->bus + ATA_REG_ERR) | inb(dev->bus + ATA_REG_STAT) & (ATA_FLAG_BSY | ATA_FLAG_DRQ)) {
+	if (inb(dev->bus + ATA_REG_ERR) | (inb(dev->bus + ATA_REG_STAT) & (ATA_FLAG_BSY | ATA_FLAG_DRQ))) {
 		return ATA_ERR_IO_FAILED;
 	}
 	outb(dev->bus + ATA_REG_SECT_CNT, sector_count);

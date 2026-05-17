@@ -25,7 +25,7 @@ extern uint32_t *entry_count;
 
 struct context;
 
-void kmemcpy(void *dst, void *src, mem_t size);
+void memcpy(void *dst, void *src, mem_t size);
 void *kpage_alloc(void);
 void init_memory(struct context *ctx);
 

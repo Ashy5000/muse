@@ -54,7 +54,7 @@ struct vfs_inode vfs_open(char *path) {
 		bool success = false;
 		while (tnode) {
 			bool match = true;
-			if (tnode->name_len != end - start) {
+			if (tnode->name_len != (uintptr_t)(end - start)) {
 				match = false;
 			}
 			for (uint32_t i = 0; i < tnode->name_len; i++) {

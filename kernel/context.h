@@ -2,6 +2,7 @@
 #define CONTEXT_H
 
 #include "scroll.h"
+
 struct context {
 	mem_t esp;
 	paddr_t page_directory;
@@ -11,6 +12,7 @@ struct context {
 	uint8_t priority;
 	uint32_t alarm;
 	uint32_t slices_remaining;
+	struct scroll *first_scr;
 };
 
 void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scroll *first_scr);

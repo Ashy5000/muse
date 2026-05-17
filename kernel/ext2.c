@@ -6,7 +6,6 @@
 #define EXT2_DIR 0x4000
 
 struct ext2_block_group_descriptor get_block_group_descriptor(struct ext2_superblock *superblock, struct ata_dev *dev, struct gpt_partition *partition, uint32_t idx) {
-	uint32_t block_groups = (superblock->total_inodes + superblock->inodes_per_group - 1) / superblock->inodes_per_group;
 	uint32_t block_size = 1024 << superblock->block_size_log;
 	uint32_t lba = partition->start_lba + (idx * sizeof(struct ext2_block_group_descriptor) / SECTOR_SIZE);
 	if (block_size == 1024) {
@@ -33,7 +32,7 @@ struct ext2_inode get_inode(struct ext2_superblock *superblock, struct ata_dev *
 	struct ext2_block_group_descriptor group_descriptor = get_block_group_descriptor(superblock, dev, partition, group);
 	lba += group_descriptor.inode_table * block_size / SECTOR_SIZE;
 	struct ext2_inode *inodes = kmalloc(SECTOR_SIZE);
-	enum ata_res err = ata_transfer(dev, lba, 1, (uint16_t*)inodes, ATA_READ);
+	ata_transfer(dev, lba, 1, (uint16_t*)inodes, ATA_READ);
 	uint32_t offset = idx % (SECTOR_SIZE / inode_size);
 	struct ext2_inode res = *((struct ext2_inode*)(((void*)inodes) + (offset * inode_size)));
 	kfree(inodes);
@@ -56,13 +55,13 @@ void enumerate_children(struct vfs_inode *inode_v) {
 	for (uint32_t i = 0; i < blocks; i++) {
 		uint32_t lba = payload->partition->start_lba + (inode.direct_blocks[i] * block_size / SECTOR_SIZE);
 		ata_transfer(payload->dev, lba, block_size / SECTOR_SIZE, buf, ATA_READ);
-		while((void*)entry - buf < block_size - 1) {
+		while((uintptr_t)entry - (uintptr_t)buf < block_size - 1) {
 			if (entry->inode == 0) {
 				continue;
 			}
 			struct vfs_tnode *tnode = kmalloc(sizeof(struct vfs_tnode));
 			char *name = kmalloc(entry->name_len);
-			kmemcpy(name, entry->name, entry->name_len);
+			memcpy(name, entry->name, entry->name_len);
 			tnode->name = name;
 			tnode->name_len = entry->name_len;
 			tnode->next = 0;
@@ -110,7 +109,7 @@ void ext2_read(struct vfs_inode *inode, uint32_t offset, uint32_t len, void *dat
 			count -= current_offset + skip + count - (offset + len);
 		}
 		get_block_from_inode(block_size, payload->dev, payload->partition, payload->inode, block, bfr);
-		kmemcpy(data + current_offset + skip - offset, bfr + skip, count);
+		memcpy(data + current_offset + skip - offset, bfr + skip, count);
 		block++;
 	}
 	kfree(bfr);

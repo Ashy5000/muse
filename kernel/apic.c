@@ -75,7 +75,7 @@ void map_irq(uint32_t base, uint8_t irq) {
 void init_ioapic() {
 	// Get the base address for the IOAPIC registers
 	struct madt *madt = find_sdt("APIC");
-	uint32_t ioapic_base;
+	uint32_t ioapic_base = 0;
 	void *entry = ((void*)madt) + 0x2C;
 	while ((uintptr_t)entry < (uintptr_t)madt + madt->header.length) {
 		uint8_t type = ((uint8_t*)entry)[0];
@@ -89,14 +89,12 @@ void init_ioapic() {
 	}
 
 	// Get the active local APIC ID
-	unsigned int ebx, unused;
+	uint32_t ebx = 0, unused = 0;
 	__get_cpuid(1, &unused, &ebx, &unused, &unused);
 	uint8_t apic_id = (ebx >> 24) & 0xff;
 	kprint("Local APIC ID is ");
 	kprint_int(apic_id, 10);
 	kprint(".\n");
-
-	uint32_t max_redirection_entries = (read_ioapic(ioapic_base, 0x01) >> 16) & 0xff;
 
 	map_irq(ioapic_base, 1); // Keyboard
 	map_irq(ioapic_base, timer_irq);

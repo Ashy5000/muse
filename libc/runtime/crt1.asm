@@ -18,7 +18,9 @@ _start:
 
 	call main // Start of program
 	
-	mov %eax, %edi // Store exit code
+	push %ebp
+	mov %esp, %ebp
+	push %eax
 	call exit
 	jmp .
 

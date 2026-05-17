@@ -8,7 +8,7 @@
 
 #define PT_LOAD 1
 
-void load_elf(char *path) {
+void load_elf(char *path, uint32_t argc, char **argv) {
 	struct vfs_inode file = vfs_open(path);
 	if (!file.present) {
 		kprint("File not present!\n");
@@ -55,7 +55,7 @@ void load_elf(char *path) {
 		}
 	}
 	lock_scheduler();
-	load_user_entry((func_ptr_t)(uintptr_t)header->entry_point);
+	load_user_call_info((func_ptr_t)(uintptr_t)header->entry_point, argc, argv);
 	kprint("Initializing context...\n");
 	create_context(enter_ring3, 1, true, first_scr);
 	kprint("Context initialized.\n");

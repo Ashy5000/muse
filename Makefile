@@ -3,11 +3,13 @@ KERNEL_SRC = kernel
 DRIVER_SRC = drivers
 LIBC_SRC = libc/lib
 RUNTIME_SRC = libc/runtime
+LIBC_INCLUDE = libc/include
 CROSS_ROOT = $(HOME)/opt/cross/bin
 CC = $(CROSS_ROOT)/i686-muse-gcc
 AS = $(CROSS_ROOT)/i686-muse-as
 LD = $(CROSS_ROOT)/i686-muse-ld
 AR = $(CROSS_ROOT)/i686-muse-ar
+CFLAGS = -Wall -Werror -Wextra
 SRC_DIRS = $(KERNEL_SRC) $(DRIVER_SRC) $(LIBC_SRC)
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
 DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
@@ -20,11 +22,12 @@ KERNEL_OBJS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KE
 DRIVER_OBJS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_C_SOURCES)) $(patsubst $(DRIVER_SRC)/%.asm, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_ASM_SOURCES))
 LIBC_OBJS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_C_SOURCES)) $(patsubst $(LIBC_SRC)/%.asm, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_ASM_SOURCES))
 LIB_DIR = fs/usr/lib
+INCLUDE_DIR = fs/usr/include
 RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SOURCES))
 LIBC_PATH = $(LIB_DIR)/libc.a
 
 define compile-c =
-$(CC) -ffreestanding -c $< -o $@ -Os -g
+$(CC) $(CFLAGS) -ffreestanding -c $< -o $@ -O1 -g
 endef
 
 define assemble =
@@ -52,14 +55,18 @@ $(BUILD_DIR)/kernel.bin: kernel_entry.o $(KERNEL_OBJS) $(DRIVER_OBJS)
 $(LIBC_PATH): $(LIBC_OBJS)
 	$(AR) rcs $@ $^
 
-disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin fs
+$(INCLUDE_DIR): $(LIBC_INCLUDE)
+	rm -rf $(INCLUDE_DIR)/*
+	cp -r $(LIBC_INCLUDE) $(INCLUDE_DIR)/..
+
+disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin $(INCLUDE_DIR) $(LIBC_PATH) $(RUNTIME_OBJS)
 	dd if=/dev/zero of=disk.bin bs=512 count=131072
 	sudo sh -c "yes | parted disk.bin mktable GPT"
 	sudo parted disk.bin mkpart MUSEKRN 2048s 4095s -a none
 	sudo parted disk.bin mkpart MUSEFS 4096s 131001s -a none
 	dd if=$(BUILD_DIR)/boot_sect.bin of=disk.bin bs=1 count=446 conv=notrunc
 	dd if=$(BUILD_DIR)/kernel.bin of=disk.bin bs=512 seek=2048 count=64 conv=notrunc
-	sudo umount /dev/loop0 -q; exit 0
+	-sudo umount /dev/loop0 -q
 	sudo losetup -D
 	sudo losetup /dev/loop0 disk.bin -o 2097152
 	sudo mke2fs /dev/loop0 63453k
@@ -68,11 +75,7 @@ disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin fs
 	sudo cp -r fs/* /mnt/
 	sync
 
-runtime: $(RUNTIME_OBJS)
-
-libc: $(LIBC_PATH)
-
-build: disk.bin libc runtime
+build: disk.bin runtime
 
 run: build
 	qemu-system-i386 -drive format=raw,file=disk.bin -no-reboot -no-shutdown -gdb tcp::9000

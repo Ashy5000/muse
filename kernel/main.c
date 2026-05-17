@@ -38,7 +38,7 @@ int main() {
 
 	start_hpet();
 
-	load_elf("/ext2/bin/test.o");
+	load_elf("/ext2/bin/test.o", 0, 0);
 
 	lock_scheduler();
 	create_context(idle, 1, false, 0);

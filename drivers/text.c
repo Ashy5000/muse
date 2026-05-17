@@ -17,7 +17,7 @@ void init_console(void) {
 }
 
 void kscroll(void) {
-	kmemcpy(video_memory, video_memory + 80 * 2, 80 * 2 * 24);
+	memcpy(video_memory, video_memory + 80 * 2, 80 * 2 * 24);
 	for (int i = 0; i < 80; i++) {
 		video_memory[80 * 2 * 24 + i * 2] = 0;
 	}
@@ -77,7 +77,7 @@ void kprint_hex(char *data, int len) {
 }
 
 unsigned int nth_digit(unsigned int x, unsigned int digit, unsigned int base) {
-	for (int i = 0; i < digit; i++) {
+	for (uint32_t i = 0; i < digit; i++) {
 		x /= base;
 	}
 	return x % base;

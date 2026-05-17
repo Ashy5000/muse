@@ -36,6 +36,6 @@ struct elf_program_header {
 	uint32_t alignment;
 };
 
-void load_elf(char *path);
+void load_elf(char *path, uint32_t argc, char **argv);
 
 #endif

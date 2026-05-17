@@ -39,7 +39,6 @@ void *kmalloc(vaddr_t size) {
 			}
 			if (header->size - size > sizeof(struct block_header)) {
 				struct block_header *new_header = block + size + sizeof(struct block_header);
-				vaddr_t page_start = (uintptr_t)new_header - ((uintptr_t)new_header % PAGE_SIZE);
 				new_header->size = header->size - size - sizeof(struct block_header);
 				new_header->free = 1;
 				if ((header->free & 2) > 0) {
@@ -83,7 +82,7 @@ void *kmalloc_aligned() {
 			page_end += PAGE_SIZE;
 			header_start += PAGE_SIZE;
 		}
-		if (header->size >= PAGE_SIZE) {
+		if ((uintptr_t)header + header->size + sizeof(*header) >= page_end) {
 			vaddr_t header_page_start = header_start - (header_start % PAGE_SIZE);
 			if (!get_page_mapping(header_page_start)) {
 				map_page(header_page_start, (uintptr_t)kpage_alloc());
@@ -94,7 +93,7 @@ void *kmalloc_aligned() {
 				page_header->free = 2;
 				header->free = 1;
 			}
-			page_header->size = PAGE_SIZE;
+			page_header->size = (uintptr_t)header + header->size - page_start;
 			struct block_header *excess_header = (struct block_header*)(uintptr_t)(page_end);
 			vaddr_t excess_page = (uintptr_t)excess_header - ((uintptr_t)excess_header % PAGE_SIZE);
 			if ((uintptr_t)(excess_header + 1) < (uintptr_t)header + header->size) {

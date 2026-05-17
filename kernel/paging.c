@@ -5,8 +5,6 @@
 #include "alloc.h"
 #include "../drivers/text.h"
 
-extern void *hpet_base;
-extern void *hpet_limit;
 extern uint32_t reserved_pages_count;
 extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
@@ -95,7 +93,7 @@ void unmap_page(vaddr_t vaddr) {
 }
 
 void map_page_range_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages) {
-	for (int i = 0; i < pages; i++) {
+	for (uint32_t i = 0; i < pages; i++) {
 		map_page_inactive(directory, vaddr + (i * PAGE_SIZE), paddr + (i * PAGE_SIZE));
 	}
 }
@@ -123,7 +121,7 @@ paddr_t init_paging() {
 		directory[i] = 0;
 	}
 	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
-	for (int i = 0; i < *entry_count; i++) {
+	for (uint32_t i = 0; i < *entry_count; i++) {
 		uint32_t bitmap_count = ((uint32_t*)(uintptr_t)(mmap_table[i].addr_low))[0];
 		uint32_t pages = (bitmap_count * sizeof(uint32_t) + PAGE_SIZE - 1) / PAGE_SIZE;
 		map_page_range_inactive(directory, mmap_table[i].addr_low, mmap_table[i].addr_low, pages);
@@ -139,7 +137,6 @@ paddr_t init_paging() {
 }
 
 paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *first_scr) {
-	paddr_t test = (uintptr_t)kpage_alloc();
 	struct scroll directory_scr = kmalloc_page();
 	uint32_t *directory_virt = (uint32_t*)(uintptr_t)directory_scr.vaddr;
 
@@ -165,7 +162,6 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *fir
 		paddr_t page_phys = (uintptr_t)kpage_alloc();
 		table_virt[(i >> 12) & TEN_BITS] = set_user(set_present(set_writeable(set_page(0, page_phys), true), true), true);
 	}
-
 
 	struct scroll stack_scr = kmalloc_page();
 	table_virt[((TASK_STACK_BASE - PAGE_SIZE) >> 12) & TEN_BITS] = set_user(set_present(set_writeable(set_page(0, stack_scr.aligned_backend.page), true), true), true);

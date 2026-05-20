@@ -3,9 +3,11 @@
 #include "../drivers/text.h"
 #include "ext2.h"
 
-void init_gpt(struct hal_drive *dev) {
+bool init_gpt(struct hal_drive *dev) {
 	struct gpt_table_header *header = kmalloc(SECTOR_SIZE);
-	dev->transfer(dev, 1, 1, (uint16_t*)header, DRV_READ);
+	if (dev->transfer(dev, 1, 1, (uint16_t*)header, DRV_READ)) {
+		return false;
+	}
 	kprint("GPT table header detected. Table contains ");
 	kprint_int(header->partition_count, 10);
 	kprint(" partitions.\n");
@@ -13,7 +15,9 @@ void init_gpt(struct hal_drive *dev) {
 	// Go one sector at a time to save memory
 	struct gpt_partition *partitions = kmalloc(SECTOR_SIZE);
 	for (uint32_t i = 0; i < num_sectors; i++) {
-		dev->transfer(dev, 2 + i, 1, (uint16_t*)partitions, DRV_READ);
+		if(dev->transfer(dev, 2 + i, 1, (uint16_t*)partitions, DRV_READ)) {
+			return false;
+		}
 		for (uint32_t j = 0; j < 4; j++) {
 			uint8_t guid_nonzero = 0;
 			for (uint32_t k = 0; k < 16; k++) {
@@ -32,4 +36,5 @@ void init_gpt(struct hal_drive *dev) {
 	}
 	kfree(partitions);
 	kfree(header);
+	return true;
 }

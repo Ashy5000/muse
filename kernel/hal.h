@@ -24,7 +24,7 @@ enum hal_drive_dir {
 struct hal_drive {
 	uint8_t type;
 	enum hal_drive_res status;
-	enum hal_drive_res (*transfer)(struct hal_drive *dev, lba_t lba, uint8_t sector_count, void *data, enum hal_drive_dir dir);
+	__attribute__((warn_unused_result)) enum hal_drive_res (*transfer)(struct hal_drive *dev, lba_t lba, uint8_t sector_count, void *data, enum hal_drive_dir dir);
 	void *backend_data;
 };
 

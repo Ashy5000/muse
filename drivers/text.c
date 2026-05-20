@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include "text.h"
 #include "../kernel/memory.h"
 
@@ -126,5 +127,54 @@ void kprint_int_full(int x, int base) {
 		} else {
 			kput_char('A' + digit - 10);
 		}
+	}
+}
+enum fmt_specifier {
+	FMT_SPC_NONE,
+	FMT_SPC_STR,
+	FMT_SPC_INT,
+	FMT_SPC_HEX,
+};
+
+enum fmt_specifier consume_specifier(const char *fmt) {
+	switch (*fmt) {
+		case 's':
+			return FMT_SPC_STR;
+		case 'i':
+			return FMT_SPC_INT;
+		case 'x':
+			return FMT_SPC_HEX;
+
+	}
+	return FMT_SPC_NONE;
+}
+
+void kprintf(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	while (*fmt) {
+		if (*fmt == '%') {
+			fmt++;
+			enum fmt_specifier spc = consume_specifier(fmt);
+			switch (spc) {
+				case FMT_SPC_NONE:
+					kput_char('%');
+					kput_char(*fmt);
+					break;
+				case FMT_SPC_STR:
+					kprint(va_arg(args, const char*));
+					break;
+				case FMT_SPC_INT:
+					kprint_int(va_arg(args, int), 10);
+					break;
+				case FMT_SPC_HEX:
+					kprint("0x");
+					kprint_int(va_arg(args, int), 16);
+					break;
+			}
+		} else {
+			kput_char(*fmt);
+		}
+		fmt++;
 	}
 }

@@ -103,6 +103,6 @@ struct ext2_vfs_payload {
 	struct ext2_superblock *superblock;
 };
 
-bool detect_ext2(struct hal_drive *dev, struct gpt_partition partition);
+enum hal_drive_res detect_ext2(struct hal_drive *dev, struct gpt_partition partition);
 
 #endif

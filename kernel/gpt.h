@@ -33,6 +33,6 @@ struct gpt_partition {
 };
 
 
-void init_gpt(struct hal_drive *dev);
+bool init_gpt(struct hal_drive *dev);
 
 #endif

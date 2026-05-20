@@ -44,7 +44,7 @@ bool detect_float(uint16_t bus) {
 	return inb(bus + ATA_REG_STAT) == 0xFF;
 }
 
-enum hal_drive_res poll_data(struct ata_dev *dev) {
+__attribute__((warn_unused_result)) enum hal_drive_res poll_data(struct ata_dev *dev) {
 	uint32_t polls = 0;
 	for (;;) {
 		polls++;
@@ -70,7 +70,7 @@ void delay_400ns(struct ata_dev *dev) {
 	}
 }
 
-enum hal_drive_res select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_count) {
+__attribute__((warn_unused_result)) enum hal_drive_res select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_count) {
 	uint32_t polls = 0;
 	while (inb(dev->bus + ATA_REG_STAT) & (ATA_FLAG_BSY | ATA_FLAG_DRQ)) {
 		polls++;
@@ -90,7 +90,7 @@ enum hal_drive_res select_region(struct ata_dev *dev, uint32_t lba, uint8_t sect
 	return DRV_SUCCESS;
 }
 
-enum hal_drive_res flush_cache(struct ata_dev *dev) {
+__attribute__((warn_unused_result)) enum hal_drive_res flush_cache(struct ata_dev *dev) {
 	outb(dev->bus + ATA_REG_CMD, ATA_CMD_FLUSH);
 	uint32_t polls = 0;
 	while (inb(dev->bus + ATA_REG_STAT) & ATA_FLAG_BSY) {
@@ -102,7 +102,7 @@ enum hal_drive_res flush_cache(struct ata_dev *dev) {
 	return DRV_SUCCESS;
 }
 
-enum hal_drive_res ata_transfer(struct hal_drive *hdev, lba_t lba, uint8_t sector_count, void *data, enum hal_drive_dir dir) {
+__attribute__((warn_unused_result)) enum hal_drive_res ata_transfer(struct hal_drive *hdev, lba_t lba, uint8_t sector_count, void *data, enum hal_drive_dir dir) {
 	uint16_t *data_w = data;
 	struct ata_dev *dev = hdev->backend_data;
 	if (!dev->lba28) {
@@ -139,7 +139,10 @@ enum hal_drive_res ata_transfer(struct hal_drive *hdev, lba_t lba, uint8_t secto
 		delay_400ns(dev);
 	}
 
-	flush_cache(dev);
+	res = flush_cache(dev);
+	if (res) {
+		return res;
+	}
 
 	uint8_t status = inb(dev->bus + ATA_REG_STAT);
 	if (status & (ATA_FLAG_ERR | ATA_FLAG_DRIVE_FLT)) {

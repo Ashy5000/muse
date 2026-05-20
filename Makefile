@@ -18,6 +18,7 @@ DRIVER_ASM_SOURCES = $(wildcard $(DRIVER_SRC)/*.asm)
 LIBC_C_SOURCES = $(wildcard $(LIBC_SRC)/*.c)
 LIBC_ASM_SOURCES = $(wildcard $(LIBC_SRC)/*.asm)
 RUNTIME_ASM_SOURCES = $(wildcard $(RUNTIME_SRC)/*.asm)
+ALL_SRC = $(KERNEL_C_SOURCES) $(DRIVER_C_SOURCES) $(KERNEL_ASM_SOURCES) $(DRIVER_ASM_SOURCES) $(LIBC_C_SOURCES) $(LIBC_ASM_SOURCES) $(RUNTIME_ASM_SOURCES)
 KERNEL_OBJS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_C_SOURCES)) $(patsubst $(KERNEL_SRC)/%.asm, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_ASM_SOURCES))
 DRIVER_OBJS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_C_SOURCES)) $(patsubst $(DRIVER_SRC)/%.asm, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_ASM_SOURCES))
 LIBC_OBJS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_C_SOURCES)) $(patsubst $(LIBC_SRC)/%.asm, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_ASM_SOURCES))
@@ -86,4 +87,7 @@ debug: build
 clean:
 	rm $(BUILD_DIR)/*.o
 
-.PHONY: runtime libc build run debug clean
+todo:
+	-@for file in $(ALL_SRC:Makefile=); do grep -F -H -e TODO -e FIXME $$file; done; true
+
+.PHONY: runtime libc build run debug clean todo

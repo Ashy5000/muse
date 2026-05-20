@@ -4,6 +4,7 @@
 #include "io.h"
 #include "ata.h"
 #include "gpt.h"
+#include "hal.h"
 
 #define ATA_BUS_PRIMARY 0x1F0
 #define ATA_BUS_SECONDARY 0x170
@@ -39,28 +40,26 @@
 #define ATA_FLAG_DRQ 0x08
 #define ATA_FLAG_NIEN 0x02
 
-#define MAX_POLLS 1000
-
 bool detect_float(uint16_t bus) {
 	return inb(bus + ATA_REG_STAT) == 0xFF;
 }
 
-enum ata_res poll_data(struct ata_dev *dev) {
+enum hal_drive_res poll_data(struct ata_dev *dev) {
 	uint32_t polls = 0;
 	for (;;) {
 		polls++;
 		if (polls >= MAX_POLLS) {
-			return ATA_ERR_TIMEOUT;
+			return DRV_ERR_TIMEOUT;
 		}
 		uint8_t status = inb(dev->bus + ATA_REG_STAT);
 		if (status & ATA_FLAG_BSY) {
 			continue;
 		}
 		if ((status & ATA_FLAG_ERR) || (status & ATA_FLAG_DRIVE_FLT)) {
-			return ATA_ERR_IO_FAILED;
+			return DRV_ERR_IO_FAILED;
 		}
 		if (status & ATA_FLAG_DRQ) {
-			return ATA_SUCCESS;
+			return DRV_SUCCESS;
 		}
 	}
 }
@@ -71,52 +70,54 @@ void delay_400ns(struct ata_dev *dev) {
 	}
 }
 
-enum ata_res select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_count) {
+enum hal_drive_res select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_count) {
 	uint32_t polls = 0;
 	while (inb(dev->bus + ATA_REG_STAT) & (ATA_FLAG_BSY | ATA_FLAG_DRQ)) {
 		polls++;
 		if (polls >= MAX_POLLS) {
-			return ATA_ERR_TIMEOUT;
+			return DRV_ERR_TIMEOUT;
 		}
 	}
 	outb(dev->bus + ATA_REG_DRIVE, dev->drive | ((lba >> 24) & 0xf) | 0xE0);
 	delay_400ns(dev);
 	if (inb(dev->bus + ATA_REG_ERR) | (inb(dev->bus + ATA_REG_STAT) & (ATA_FLAG_BSY | ATA_FLAG_DRQ))) {
-		return ATA_ERR_IO_FAILED;
+		return DRV_ERR_IO_FAILED;
 	}
 	outb(dev->bus + ATA_REG_SECT_CNT, sector_count);
 	outb(dev->bus + ATA_REG_LBA_LO, lba);
 	outb(dev->bus + ATA_REG_LBA_MID, lba >> 8);
 	outb(dev->bus + ATA_REG_LBA_HI, lba >> 16);
-	return ATA_SUCCESS;
+	return DRV_SUCCESS;
 }
 
-enum ata_res flush_cache(struct ata_dev *dev) {
+enum hal_drive_res flush_cache(struct ata_dev *dev) {
 	outb(dev->bus + ATA_REG_CMD, ATA_CMD_FLUSH);
 	uint32_t polls = 0;
 	while (inb(dev->bus + ATA_REG_STAT) & ATA_FLAG_BSY) {
 		polls++;
 		if (polls >= MAX_POLLS) {
-			return ATA_ERR_TIMEOUT;
+			return DRV_ERR_TIMEOUT;
 		}
 	}
-	return ATA_SUCCESS;
+	return DRV_SUCCESS;
 }
 
-enum ata_res ata_transfer(struct ata_dev *dev, uint32_t lba, uint8_t sector_count, uint16_t *data, enum ata_dir dir) {
+enum hal_drive_res ata_transfer(struct hal_drive *hdev, lba_t lba, uint8_t sector_count, void *data, enum hal_drive_dir dir) {
+	uint16_t *data_w = data;
+	struct ata_dev *dev = hdev->backend_data;
 	if (!dev->lba28) {
-		return ATA_ERR_NO_SUPPORTED_MODE;
+		return DRV_ERR_NO_SUPPORTED_MODE;
 	}
-	enum ata_res res = select_region(dev, lba, sector_count);
+	enum hal_drive_res res = select_region(dev, lba, sector_count);
 	if (res) {
 		return res;
 	}
-	if (dir == ATA_READ) {
+	if (dir == DRV_READ) {
 		outb(dev->bus + ATA_REG_CMD, ATA_CMD_READ_SECTORS);
-	} else if (dir == ATA_WRITE) {
+	} else if (dir == DRV_WRITE) {
 		outb(dev->bus + ATA_REG_CMD, ATA_CMD_WRITE_SECTORS);
 	} else {
-		return ATA_ERR_BAD_ARGS;
+		return DRV_ERR_BAD_ARGS;
 	}
 	// Make sure ERR and DF bits from last command are clear
 	for (uint32_t i = 0; i < 4; i++) {
@@ -128,10 +129,10 @@ enum ata_res ata_transfer(struct ata_dev *dev, uint32_t lba, uint8_t sector_coun
 			return res;
 		}
 		for (uint32_t j = 0; j < 256; j++) {
-			if (dir == ATA_READ) {
-				data[j + (i * 256)] = inw(dev->bus + ATA_REG_DATA);
+			if (dir == DRV_READ) {
+				data_w[j + (i * 256)] = inw(dev->bus + ATA_REG_DATA);
 			} else {
-				outw(dev->bus + ATA_REG_DATA, data[j + (i * 256)]);
+				outw(dev->bus + ATA_REG_DATA, data_w[j + (i * 256)]);
 			}
 		}
 
@@ -142,48 +143,51 @@ enum ata_res ata_transfer(struct ata_dev *dev, uint32_t lba, uint8_t sector_coun
 
 	uint8_t status = inb(dev->bus + ATA_REG_STAT);
 	if (status & (ATA_FLAG_ERR | ATA_FLAG_DRIVE_FLT)) {
-		return ATA_ERR_IO_FAILED;
+		return DRV_ERR_IO_FAILED;
 	}
 
-	return ATA_SUCCESS;
+	return DRV_SUCCESS;
 }
 
-struct ata_dev *detect_drive(uint16_t bus, uint8_t drive) {
+struct hal_drive *detect_drive(uint16_t bus, uint8_t drive) {
+	struct hal_drive *hdev = kmalloc(sizeof(*hdev));
 	struct ata_dev *dev = kmalloc(sizeof(*dev));
+	hdev->backend_data = dev;
+	hdev->transfer = ata_transfer;
 	dev->bus = bus;
 	dev->drive = drive;
-	dev->status = ATA_ERR_NO_DRIVE;
+	hdev->status = DRV_ERR_NO_DRIVE;
 	outb(bus + ATA_REG_DRIVE, drive);
 	for (uint16_t port = bus + ATA_REG_SECT_CNT; port <= bus + ATA_REG_LBA_HI; port++) {
 		outb(port, 0);
 	}
 	outb(bus + ATA_REG_CMD, ATA_CMD_IDENTIFY);
 	if (inb(bus + ATA_REG_STAT) == 0) {
-		return dev;
+		return hdev;
 	}
 	uint32_t polls = 0;
 	while ((inb(bus + ATA_REG_STAT) & ATA_FLAG_BSY) > 0) {
 		polls++;
 		if (polls > MAX_POLLS) {
-			dev->status = ATA_ERR_TIMEOUT;
-			return dev;
+			hdev->status = DRV_ERR_TIMEOUT;
+			return hdev;
 		}
 	}
 	if (inb(bus + ATA_REG_LBA_MID) || inb(bus + ATA_REG_LBA_HI)) {
-		return dev;
+		return hdev;
 	}
 	polls = 0;
 	while ((inb(bus + ATA_REG_STAT) & ATA_FLAG_DRQ) == 0 && (inb(bus + ATA_REG_STAT) & ATA_FLAG_ERR) == 0) {
 		polls++;
 		if (polls > MAX_POLLS) {
-			dev->status = ATA_ERR_TIMEOUT;
-			return dev;
+			hdev->status = DRV_ERR_TIMEOUT;
+			return hdev;
 		}
 	}
 	if ((inb(bus + ATA_REG_STAT) & 0x1) > 0) {
-		return dev;
+		return hdev;
 	}
-	dev->status = ATA_SUCCESS;
+	hdev->status = DRV_SUCCESS;
 	for (uint32_t i = 0; i < 256; i++) {
 		uint16_t data = inw(bus + ATA_REG_DATA);
 		if (i == 83) {
@@ -205,9 +209,9 @@ struct ata_dev *detect_drive(uint16_t bus, uint8_t drive) {
 	// Disable interrupts
 	outb(bus + ATA_CTRL_REG_CTRL, inb(bus + ATA_CTRL_REG_CTRL) | ATA_FLAG_NIEN);
 
-	init_gpt(dev);
+	init_gpt(hdev);
 
-	return dev;
+	return hdev;
 }
 
 void detect_bus(uint16_t bus) {

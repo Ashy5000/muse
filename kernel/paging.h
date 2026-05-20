@@ -9,13 +9,17 @@
 #define ADDR_MASK 0xFFFFF000
 #define TEN_BITS 0x3FF
 
+typedef uint32_t paging_entry_t;
+typedef paging_entry_t* paging_table_t;
+typedef paging_entry_t leaf_t;
+typedef leaf_t* manuscript_t;
 
 paddr_t init_paging();
-void map_page_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr);
-void map_page_range_inactive(uint32_t* directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages);
+void map_page_inactive(paging_table_t directory, vaddr_t vaddr, paddr_t paddr);
+void map_page_range_inactive(paging_table_t directory, vaddr_t vaddr, paddr_t paddr, uint32_t pages);
 void map_page(vaddr_t vaddr, paddr_t paddr);
 void unmap_page(vaddr_t vaddr);
-uint32_t get_page_mapping(vaddr_t vaddr);
+paddr_t get_page_mapping(vaddr_t vaddr);
 paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *first_scr);
 
 #endif

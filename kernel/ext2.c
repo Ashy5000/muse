@@ -5,7 +5,7 @@
 
 #define EXT2_DIR 0x4000
 
-struct ext2_block_group_descriptor get_block_group_descriptor(struct ext2_superblock *superblock, struct ata_dev *dev, struct gpt_partition *partition, uint32_t idx) {
+struct ext2_block_group_descriptor get_block_group_descriptor(struct ext2_superblock *superblock, struct hal_drive *dev, struct gpt_partition *partition, uint32_t idx) {
 	uint32_t block_size = 1024 << superblock->block_size_log;
 	uint32_t lba = partition->start_lba + (idx * sizeof(struct ext2_block_group_descriptor) / SECTOR_SIZE);
 	if (block_size == 1024) {
@@ -14,13 +14,13 @@ struct ext2_block_group_descriptor get_block_group_descriptor(struct ext2_superb
 		lba += block_size / SECTOR_SIZE;
 	}
 	struct ext2_block_group_descriptor *descriptors = kmalloc(SECTOR_SIZE);
-	ata_transfer(dev, lba, 1, (uint16_t*)descriptors, ATA_READ);
+	dev->transfer(dev, lba, 1, (uint16_t*)descriptors, DRV_READ);
 	struct ext2_block_group_descriptor descriptor = descriptors[idx % (SECTOR_SIZE / sizeof(struct ext2_block_group_descriptor))];
 	kfree(descriptors);
 	return descriptor;
 }
 
-struct ext2_inode get_inode(struct ext2_superblock *superblock, struct ata_dev *dev, struct gpt_partition *partition, uint32_t inode) {
+struct ext2_inode get_inode(struct ext2_superblock *superblock, struct hal_drive *dev, struct gpt_partition *partition, uint32_t inode) {
 	uint32_t group = (inode - 1) / superblock->inodes_per_group;
 	uint32_t idx = (inode - 1) % superblock->inodes_per_group;
 	uint32_t inode_size = 128;
@@ -32,7 +32,7 @@ struct ext2_inode get_inode(struct ext2_superblock *superblock, struct ata_dev *
 	struct ext2_block_group_descriptor group_descriptor = get_block_group_descriptor(superblock, dev, partition, group);
 	lba += group_descriptor.inode_table * block_size / SECTOR_SIZE;
 	struct ext2_inode *inodes = kmalloc(SECTOR_SIZE);
-	ata_transfer(dev, lba, 1, (uint16_t*)inodes, ATA_READ);
+	dev->transfer(dev, lba, 1, (uint16_t*)inodes, DRV_READ);
 	uint32_t offset = idx % (SECTOR_SIZE / inode_size);
 	struct ext2_inode res = *((struct ext2_inode*)(((void*)inodes) + (offset * inode_size)));
 	kfree(inodes);
@@ -54,7 +54,7 @@ void enumerate_children(struct vfs_inode *inode_v) {
 	struct ext2_directory_entry *entry = buf;
 	for (uint32_t i = 0; i < blocks; i++) {
 		uint32_t lba = payload->partition->start_lba + (inode.direct_blocks[i] * block_size / SECTOR_SIZE);
-		ata_transfer(payload->dev, lba, block_size / SECTOR_SIZE, buf, ATA_READ);
+		payload->dev->transfer(payload->dev, lba, block_size / SECTOR_SIZE, buf, DRV_READ);
 		while((uintptr_t)entry - (uintptr_t)buf < block_size - 1) {
 			if (entry->inode == 0) {
 				continue;
@@ -76,17 +76,17 @@ void enumerate_children(struct vfs_inode *inode_v) {
 	kfree(buf);
 }
 
-void get_block_from_inode(uint32_t block_size, struct ata_dev *dev, struct gpt_partition *partition, struct ext2_inode inode, uint32_t n, void *data) {
+void get_block_from_inode(uint32_t block_size, struct hal_drive *dev, struct gpt_partition *partition, struct ext2_inode inode, uint32_t n, void *data) {
 	if (n < 12) {
 		uint32_t lba = partition->start_lba + (inode.direct_blocks[n] * block_size / SECTOR_SIZE);
-		ata_transfer(dev, lba, block_size / SECTOR_SIZE, data, ATA_READ);
+		dev->transfer(dev, lba, block_size / SECTOR_SIZE, data, DRV_READ);
 		return;
 	}
 	if (n < 12 + (block_size / sizeof(uint32_t))) {
 		// Singly indirect block
-		ata_transfer(dev, inode.indirect_block_single, block_size / SECTOR_SIZE, data, ATA_READ);
+		dev->transfer(dev, inode.indirect_block_single, block_size / SECTOR_SIZE, data, DRV_READ);
 		uint32_t lba = ((uint32_t*)data)[n - 12];
-		ata_transfer(dev, lba, block_size / SECTOR_SIZE, data, ATA_READ);
+		dev->transfer(dev, lba, block_size / SECTOR_SIZE, data, DRV_READ);
 		return;
 	}
 	// TODO: Handle doubly and triply indirect blocks
@@ -132,11 +132,11 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	tchild->inode = child;
 }
 
-bool detect_ext2(struct ata_dev *dev, struct gpt_partition partition_p) {
+bool detect_ext2(struct hal_drive *dev, struct gpt_partition partition_p) {
 	struct gpt_partition *partition = kmalloc(sizeof(*partition));
 	*partition = partition_p;
 	struct ext2_superblock *superblock = kmalloc(SECTOR_SIZE * 2);
-	ata_transfer(dev, partition->start_lba + 2, 2, (uint16_t*)superblock, ATA_READ);
+	dev->transfer(dev, partition->start_lba + 2, 2, (uint16_t*)superblock, DRV_READ);
 	if (superblock->signature != 0xef53) {
 		return false;
 	}

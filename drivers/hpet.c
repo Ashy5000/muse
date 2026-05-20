@@ -12,6 +12,16 @@ uint32_t tick_period;
 extern uint32_t reserved_pages_count;
 extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
+void start_hpet() {
+	uint32_t *general_conf = hpet_base + 0x10;
+	general_conf[0] |= 1;
+}
+
+void stop_hpet() {
+	uint32_t *general_conf = hpet_base + 0x10;
+	general_conf[0] &= ~1;
+}
+
 void init_hpet() {
 	// Get the HPET SDT
 	hpet_global = find_sdt("HPET");
@@ -37,6 +47,8 @@ void init_hpet() {
 
 	tick_period = general_capabilities[1];
 
+	stop_hpet();
+
 	for (uint8_t i = 0; i < timer_count; i++) {
 		uint32_t *timer_conf = (uint32_t*)(hpet_base + 0x100 + 0x20 * i);
 
@@ -53,16 +65,6 @@ void init_hpet() {
 			}
 		}
 	}
-}
-
-void start_hpet() {
-	uint32_t *general_conf = hpet_base + 0x10;
-	general_conf[0] |= 1;
-}
-
-void stop_hpet() {
-	uint32_t *general_conf = hpet_base + 0x10;
-	general_conf[0] &= ~1;
 }
 
 uint32_t get_time() {

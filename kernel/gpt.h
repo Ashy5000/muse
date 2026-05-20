@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "ata.h"
+#include "hal.h"
 
 struct gpt_table_header {
 	char signature[8];
@@ -32,6 +33,6 @@ struct gpt_partition {
 };
 
 
-void init_gpt(struct ata_dev *dev);
+void init_gpt(struct hal_drive *dev);
 
 #endif

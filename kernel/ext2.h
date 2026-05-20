@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "ata.h"
 #include "gpt.h"
+#include "hal.h"
 
 struct ext2_superblock {
 	uint32_t total_inodes;
@@ -98,11 +98,11 @@ struct ext2_directory_entry {
 
 struct ext2_vfs_payload {
 	struct ext2_inode inode;
-	struct ata_dev *dev;
+	struct hal_drive *dev;
 	struct gpt_partition *partition;
 	struct ext2_superblock *superblock;
 };
 
-bool detect_ext2(struct ata_dev *dev, struct gpt_partition partition);
+bool detect_ext2(struct hal_drive *dev, struct gpt_partition partition);
 
 #endif

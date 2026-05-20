@@ -13,7 +13,7 @@ struct __attribute__ ((packed)) smap_entry {
 	uint32_t acpi;
 };
 
-typedef uint32_t mem_t;
+typedef uintptr_t mem_t;
 typedef mem_t paddr_t;
 typedef mem_t vaddr_t;
 

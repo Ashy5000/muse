@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <cpuid.h>
-#include "../drivers/text.h"
+#include "logging.h"
 #include "msr.h"
 #include "apic.h"
 #include "paging.h"
@@ -29,9 +29,7 @@ uint32_t get_apic_base() {
 
 void init_apic() {
 	apic_base = get_apic_base();
-	kprint("APIC base registers at 0x");
-	kprint_int(apic_base, 16);
-	kprint(".\n");
+	log(LOG_INFO, LOG_APIC, "APIC base registers at %x.\n", apic_base);
 	set_apic_base(apic_base); // This will keep the base the same, but enable the local APIC.
 	*((uint32_t*)(uintptr_t)(apic_base + 0xF0)) |= 0x100; // Set bit 8 of the Spurious Intterupt Vector Register to start receiving interrupts
 	uint32_t apic_limit = apic_base + 0x400;
@@ -87,14 +85,6 @@ void init_ioapic() {
 		uint8_t length = ((uint8_t*)entry)[1];
 		entry += length;
 	}
-
-	// Get the active local APIC ID
-	uint32_t ebx = 0, unused = 0;
-	__get_cpuid(1, &unused, &ebx, &unused, &unused);
-	uint8_t apic_id = (ebx >> 24) & 0xff;
-	kprint("Local APIC ID is ");
-	kprint_int(apic_id, 10);
-	kprint(".\n");
 
 	map_irq(ioapic_base, 1); // Keyboard
 	map_irq(ioapic_base, timer_irq);

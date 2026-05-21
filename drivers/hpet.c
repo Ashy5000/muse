@@ -1,7 +1,7 @@
 #include <stdbool.h>
-#include "text.h"
 #include "hpet.h"
 #include "../kernel/paging.h"
+#include "../kernel/logging.h"
 
 struct hpet *hpet_global;
 void *hpet_base;
@@ -25,9 +25,7 @@ void stop_hpet() {
 void init_hpet() {
 	// Get the HPET SDT
 	hpet_global = find_sdt("HPET");
-	kprint("HPET at 0x");
-	kprint_int((uintptr_t)hpet_global, 16);
-	kprint(".\n");
+	log(LOG_DEBUG, LOG_HPET, "Found HPET SDT at %x.\n", (uintptr_t)hpet_global);
 
 	// Get the base address of the registers
 	hpet_base = (void*)(uintptr_t)hpet_global->address.address;
@@ -57,6 +55,7 @@ void init_hpet() {
 		uint32_t routing_map = timer_conf[1];
 		for (uint32_t j = 0; j < 32; j++) {
 			if (((routing_map >> j) & 1) > 0 && j != 0x01) { // 0x01 is the keyboard IRQ
+				log(LOG_DEBUG, LOG_HPET, "Mapping timer %x -> IRQ %x", i, j);
 				timer_irq = j;
 				timer_conf[0] |= timer_irq << 9; // Set IRQ
 				timer_conf[0] |= 1 << 2; // Enable interrupts

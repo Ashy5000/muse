@@ -1,6 +1,7 @@
 #ifndef ELF_H
 #define ELF_H
 
+#include "hal.h"
 #include <stdint.h>
 
 struct elf_header {

@@ -1,6 +1,5 @@
 #include "ext2.h"
 #include "alloc.h"
-#include "../drivers/text.h"
 #include "vfs.h"
 
 #define EXT2_DIR 0x4000
@@ -168,20 +167,7 @@ enum hal_drive_res detect_ext2(struct hal_drive *dev, struct gpt_partition parti
 		return DRV_SUCCESS;
 	}
 
-	kprint("Found EXT2 superblock with version ");
-	kprint_int(superblock->version_maj, 10);
-	kprint(".");
-	kprint_int(superblock->version_min, 10);
-	kprint(". inode size: 0x");
-	kprint_int(superblock->inode_size, 16);
-	kprint(".\n");
-	if (superblock->version_maj >= 1) {
-		kprint("Required feature flags: 0x");
-		kprint_int(superblock->feats_required, 16);
-		kprint(". Read-only feature flags: 0x");
-		kprint_int(superblock->feats_readonly, 16);
-		kprint(".\n");
-	}
+	// TODO: Handle required feature flags
 
 	struct ext2_inode root;
 	get_inode(superblock, dev, partition, 2, &root);

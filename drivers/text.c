@@ -1,4 +1,3 @@
-#include <stdarg.h>
 #include "text.h"
 #include "../kernel/memory.h"
 
@@ -55,12 +54,21 @@ void kput_char(char c) {
 	}
 }
 
-void kprint(const char *str) {
+void style_char(enum vga_text_color fg, enum vga_text_color bg) {
+	video_memory[(kcursor.y * 80 + kcursor.x) * 2 + 1] = fg | (bg << 4);
+}
+
+void kprint_fancy(const char *str, enum vga_text_color fg, enum vga_text_color bg) {
 	int i = 0;
 	while (str[i] != 0) {
+		style_char(fg, bg);
 		kput_char(str[i]);
 		i++;
 	}
+}
+
+void kprint(const char *str) {
+	kprint_fancy(str, VGA_WHITE, VGA_BLACK);
 }
 
 char bin_to_hex(char x) {
@@ -84,8 +92,9 @@ unsigned int nth_digit(unsigned int x, unsigned int digit, unsigned int base) {
 	return x % base;
 }
 
-void kprint_int(int x, int base) {
+void kprint_int_fancy(int x, int base, enum vga_text_color fg, enum vga_text_color bg) {
 	if (x == 0) {
+		style_char(fg, bg);
 		kput_char('0');
 		return;
 	}
@@ -96,6 +105,7 @@ void kprint_int(int x, int base) {
 			found_nonzero = 1;
 		}
 		if (found_nonzero) {
+			style_char(fg, bg);
 			if (digit < 10) {
 				kput_char('0' + digit);
 			} else {
@@ -103,6 +113,10 @@ void kprint_int(int x, int base) {
 			}
 		}
 	}
+}
+
+void kprint_int(int x, int base) {
+	kprint_int_fancy(x, base, VGA_WHITE, VGA_BLACK);
 }
 
 bool inrange(int base, int exp) {
@@ -116,12 +130,13 @@ bool inrange(int base, int exp) {
 	return true;
 }
 
-void kprint_int_full(int x, int base) {
+void kprint_int_full_fancy(int x, int base, enum vga_text_color fg, enum vga_text_color bg) {
 	for(int i = 0; i < base; i++) {
 		if (!inrange(base, base - 1 - i)) {
 			continue;
 		}
 		unsigned int digit = nth_digit(x, base - 1 - i, base);
+		style_char(fg, bg);
 		if (digit < 10) {
 			kput_char('0' + digit);
 		} else {
@@ -129,6 +144,11 @@ void kprint_int_full(int x, int base) {
 		}
 	}
 }
+
+void kprint_int_full(int x, int base) {
+	kprint_int_full_fancy(x, base, VGA_WHITE, VGA_BLACK);
+}
+
 enum fmt_specifier {
 	FMT_SPC_NONE,
 	FMT_SPC_STR,
@@ -149,32 +169,51 @@ enum fmt_specifier consume_specifier(const char *fmt) {
 	return FMT_SPC_NONE;
 }
 
-void kprintf(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
+void kvprintf_fancy(const char *fmt, enum vga_text_color fg, enum vga_text_color bg, va_list args) {
 	while (*fmt) {
 		if (*fmt == '%') {
 			fmt++;
 			enum fmt_specifier spc = consume_specifier(fmt);
 			switch (spc) {
 				case FMT_SPC_NONE:
+					style_char(fg, bg);
 					kput_char('%');
+					style_char(fg, bg);
 					kput_char(*fmt);
 					break;
 				case FMT_SPC_STR:
-					kprint(va_arg(args, const char*));
+					kprint_fancy(va_arg(args, const char*), fg, bg);
 					break;
 				case FMT_SPC_INT:
-					kprint_int(va_arg(args, int), 10);
+					kprint_int_fancy(va_arg(args, int), 10, fg, bg);
 					break;
 				case FMT_SPC_HEX:
-					kprint("0x");
-					kprint_int(va_arg(args, int), 16);
+					kprint_fancy("0x", fg, bg);
+					kprint_int_fancy(va_arg(args, int), 16, fg, bg);
 					break;
 			}
 		} else {
+			style_char(fg, bg);
 			kput_char(*fmt);
 		}
 		fmt++;
 	}
+}
+
+void kvprintf(const char *fmt, va_list args) {
+	kvprintf_fancy(fmt, VGA_WHITE, VGA_BLACK, args);
+}
+
+void kprintf(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	kvprintf(fmt, args);
+	va_end(args);
+}
+
+void kprintf_fancy(const char *fmt, enum vga_text_color fg, enum vga_text_color bg, ...) {
+	va_list args;
+	va_start(args, bg);
+	kvprintf_fancy(fmt, fg, bg, args);
+	va_end(args);
 }

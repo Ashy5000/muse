@@ -2,7 +2,6 @@
 #include "alloc.h"
 #include "../drivers/hpet.h"
 #include "apic.h"
-#include "../drivers/text.h"
 
 struct context *active_ctx = 0;
 struct context *next_ctx = 0;
@@ -137,7 +136,6 @@ void sleep_secs(uint32_t seconds) {
 }
 
 void terminate() {
-	kprint("Terminating process.\n");
 	lock_scheduler();
 	schedule();
 }

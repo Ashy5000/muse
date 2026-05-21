@@ -2,7 +2,7 @@
 #include "paging.h"
 #include "context.h"
 #include "alloc.h"
-#include "../drivers/text.h"
+#include "logging.h"
 
 #include <stdbool.h>
 
@@ -55,7 +55,7 @@ void *kpage_alloc() {
 			}
 		}
 	}
-	kprint("Out of memory!");
+	log(LOG_WARN, LOG_MEM, "Out of memory!");
 	__asm__ volatile ("hlt");
 	return 0;
 }
@@ -81,28 +81,11 @@ void kpage_set_status(paddr_t addr, bool free) {
 }
 
 void init_memory(struct context *ctx) {
-
-	kprint("Memory initialization starting...\n");
-
-	// STAGE I
-	// OBJECTIVE: Find the first free region. Remove all non-free regions.
-
-	kprint("MEMORY STAGE I BEGIN\n");
-
+	// Find the first free region. Remove all non-free regions
 	*entry_count = erase_unusable_regions(*entry_count);
+	log(LOG_INFO, LOG_MEM, "Found %i free areas.\n", *entry_count);
 
-	kprint("Found ");
-	kprint_int(*entry_count, 10);
-	kprint(" free areas.\n");
-
-	// STAGE II
-	// OBJECTIVE: Create bitmaps at the start of each free region
-
-	kprint("MEMORY STAGE II BEGIN\n");
-
-	kprint("Writing bitmaps...\n");
-
-	uint32_t bitmaps_written = 0;
+	// Create bitmaps at the start of each free region
 
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		mem_t addr = mmap_table[i].addr_low
@@ -116,7 +99,6 @@ void init_memory(struct context *ctx) {
 		uint32_t bitmaps_in_entry = 0;
 		for (uint32_t j = 0; j < max_pages; j += sizeof(uint32_t) * 8) {
 			*((uint32_t*)(uintptr_t)addr + j + 1) = 0; // 0 = free, 1 = used
-			bitmaps_written++;
 			bitmaps_in_entry++;
 			addr += sizeof(uint32_t);
 			size -= sizeof(uint32_t);
@@ -128,33 +110,20 @@ void init_memory(struct context *ctx) {
 		*((uint32_t*)(uintptr_t)mmap_table[0].addr_low) = bitmaps_in_entry;
 	}
 
-	kprint("Wrote ");
-	kprint_int(bitmaps_written, 10);
-	kprint(" bitmaps to 0x");
-	kprint_int(mmap_table[0].addr_low, 16);
-	kprint(".\n");
+	log(LOG_INFO, LOG_MEM, "Wrote physical alloc bitmaps to %x.", mmap_table[0].addr_low);
 
 	for (uint32_t i = 0; i < reserved_pages_count; i++) {
 		kpage_set_status(reserved_pages[i], false);
 	}
 
-	// STAGE III
-	// OBJECTIVE: Intialize paging
-
-	kprint("MEMORY STAGE III BEGIN\n");
-
+	// Intialize paging
 	ctx->page_directory = init_paging();
 
 	// STAGE IV
 	// OBJECTIVE: Set up kernel heap
 
-	kprint("MEMORY STAGE IV BEGIN\n");
-	kprint("Writing header...\n");
-
 	ctx->heap = (void*)0x10000;
 	struct block_header *header = ctx->heap;
 	header->free = 3;
 	header->size = 0x30000; // TODO: actually base this on something
-
-	kprint("Memory initialization complete.\n");
 }

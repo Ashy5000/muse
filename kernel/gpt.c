@@ -1,16 +1,14 @@
 #include "gpt.h"
 #include "alloc.h"
-#include "../drivers/text.h"
 #include "ext2.h"
+#include "logging.h"
 
 bool init_gpt(struct hal_drive *dev) {
 	struct gpt_table_header *header = kmalloc(SECTOR_SIZE);
 	if (dev->transfer(dev, 1, 1, (uint16_t*)header, DRV_READ)) {
 		return false;
 	}
-	kprint("GPT table header detected. Table contains ");
-	kprint_int(header->partition_count, 10);
-	kprint(" partitions.\n");
+	log(LOG_INFO, LOG_GPT, "GPT table detected with %i partitions.", header->partition_count);
 	uint32_t num_sectors = (header->partition_count + 3) / 4;
 	// Go one sector at a time to save memory
 	struct gpt_partition *partitions = kmalloc(SECTOR_SIZE);
@@ -26,11 +24,7 @@ bool init_gpt(struct hal_drive *dev) {
 			if (!guid_nonzero) {
 				continue;
 			}
-			kprint("Detected partition from LBA 0x");
-			kprint_int(partitions[j].start_lba, 16);
-			kprint("-0x");
-			kprint_int(partitions[j].end_lba, 16);
-			kprint(".\n");
+			log(LOG_DEBUG, LOG_GPT, "Detected partition from LBA %x-%x", partitions[j].start_lba, partitions[j].end_lba);
 			detect_ext2(dev, partitions[j]);
 		}
 	}

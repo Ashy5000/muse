@@ -2,7 +2,7 @@
 #include "paging.h"
 #include "context.h"
 #include "scroll.h"
-#include "../drivers/text.h"
+#include "logging.h"
 
 extern struct context *active_ctx;
 
@@ -60,7 +60,7 @@ void *kmalloc(vaddr_t size) {
 			header->size = (new_block + PAGE_SIZE - (new_block % PAGE_SIZE)) - (uintptr_t)block - sizeof(struct block_header);
 		}
 	}
-	kprint("kmalloc() failed: out of memory!\n");
+	log(LOG_WARN, LOG_ALLOC, "kmalloc() failed: out of memory!\n");
 	return 0;
 }
 
@@ -118,7 +118,7 @@ void *kmalloc_aligned() {
 			header->size = (uintptr_t)((new_header + PAGE_SIZE - ((uintptr_t)new_header % PAGE_SIZE)) - (uintptr_t)header - sizeof(struct block_header));
 		}
 	}
-	kprint("kmalloc_aligned() failed: out of memory!\n");
+	log(LOG_WARN, LOG_ALLOC, "kmalloc_aligned() failed: out of memory!\n");
 	return 0;
 }
 

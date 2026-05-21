@@ -1,6 +1,6 @@
 #include "pic.h"
 #include "io.h"
-#include "../drivers/text.h"
+#include "logging.h"
 
 #define PIC1 0x20
 #define PIC2 0xA0
@@ -46,5 +46,5 @@ void init_pic(void) {
 	// Mask out everything (about to switch to APIC)
 	outb(PIC1_DATA, 0xFF);
 	outb(PIC2_DATA, 0xFF);
-	kprint("PIC initialized.\n");
+	log(LOG_INFO, LOG_PIC, "PIC configured and masked.\n");
 }

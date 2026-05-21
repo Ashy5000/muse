@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include "pci.h"
 #include "io.h"
-#include "../drivers/text.h"
+#include "logging.h"
 
 #define CONFIG_ADDR 0xCF8
 #define CONFIG_DATA 0xCFC
@@ -105,18 +105,14 @@ struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 			}
 		}
 		if (res.type == 0x1) { // PCI-PCI bridge
-			scan_pci_bus(get_secondary_bus(bus, slot, func));
+			uint8_t secondary_bus = get_secondary_bus(bus, slot, func);
+			log(LOG_INFO, LOG_PCI, "Found PCI-PCI bridge to bus %x.\n", secondary_bus);
+			scan_pci_bus(secondary_bus);
 			for (uint32_t i = 0; i < 2; i++) {
 				res.bars[i] = get_bar(bus, slot, func, i);
 			}
 		}
-		kprint("Found function with vendor 0x");
-		kprint_int(res.vendor, 16);
-		kprint(", class 0x");
-		kprint_int(res.class_code, 16);
-		kprint(" and subclass 0x");
-		kprint_int(res.subclass_code, 16);
-		kprint(".\n");
+		log(LOG_INFO, LOG_PCI, "Found function with vendor %x and class %x:%x.\n", res.vendor, res.class_code, res.subclass_code);
 		init_function(res);
 		return res;
 	}
@@ -150,6 +146,7 @@ struct pci_dev scan_pci_dev(uint8_t bus, uint8_t slot) {
 struct pci_bus scan_pci_bus(uint8_t bus) {
 	struct pci_bus res;
 	for (uint8_t i = 0; i < 32; i++) {
+		log(LOG_DEBUG, LOG_PCI, "Scanning PCI bus %x.\n", i);
 		res.devs[i] = scan_pci_dev(bus, i);
 	}
 	return res;

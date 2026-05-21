@@ -3,7 +3,7 @@
 #include "context.h"
 #include "scroll.h"
 #include "alloc.h"
-#include "../drivers/text.h"
+#include "logging.h"
 
 #define LOOPBACK_DIR ((paging_table_t)0xFFFFF000)
 #define LOOPBACK_TBL(I) ((paging_table_t)(uintptr_t)(0xFFC00000 + 0x400 * (I)))
@@ -47,7 +47,7 @@ paging_entry_t set_user(paging_entry_t entry, bool user) {
 	return entry & (~PAGING_BIT_USER);
 }
 
-paging_entry_t create_paging_entry(vaddr_t addr, bool present, bool writeable, bool user) {
+paging_entry_t create_paging_entry(mem_t addr, bool present, bool writeable, bool user) {
 	return set_user(set_writeable(set_present(set_addr(0, addr), present), writeable), user);
 }
 
@@ -126,7 +126,6 @@ void enable_paging(uint32_t* directory) {
 }
 
 paddr_t init_paging() {
-	kprint("Building paging structures...\n");
 	uint32_t* directory = kpage_alloc();
 	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
 		directory[i] = 0;
@@ -141,9 +140,9 @@ paddr_t init_paging() {
 		map_page_inactive(directory, reserved_pages[i], reserved_pages[i]);
 	}
 	directory[1023] = create_paging_entry((vaddr_t)directory, true, true, true);
-	kprint("Enabling paging...\n");
+	log(LOG_DEBUG, LOG_PAGING, "Built paging structures.\n");
 	enable_paging(directory);
-	kprint("Paging enabled.\n");
+	log(LOG_INFO, LOG_PAGING, "Enabled paging.\n");
 	return (uintptr_t)directory;
 }
 
@@ -177,7 +176,7 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *fir
 	struct scroll table_scr = kmalloc_page();
 	paging_table_t table_virt = (uint32_t*)(uintptr_t)table_scr.vaddr;
 
-	directory_virt[0] = create_paging_entry(table_scr.aligned_backend.page, true, true, true);
+	directory_virt[0] = create_paging_entry((vaddr_t)table_virt, true, true, true) | MANUSCRIPT_BIND;
 
 	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(paging_entry_t); i++) {
 		table_virt[i] = table_active[i];
@@ -213,33 +212,26 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *fir
 	while (current_scr) {
 		uint32_t directory_index = PG_DIR_IDX(current_scr->vaddr);
 		paging_table_t alloc_table_virt = table_virt;
-		struct scroll alloc_table_scr;
-		if (directory_index > 0) {
-			if (directory_virt[directory_index]) {
-				continue;
-			} else {
-				alloc_table_scr = kmalloc_page();
-				alloc_table_virt = (uint32_t*)(uintptr_t)alloc_table_scr.vaddr;
-				directory_virt[directory_index] = create_paging_entry(alloc_table_scr.aligned_backend.page, true, true, true);
-			}
+		if (directory_virt[directory_index] & MANUSCRIPT_BIND) {
+			alloc_table_virt = (paging_table_t)(vaddr_t)(directory_virt[directory_index] & ADDR_MASK);
+		} else {
+			struct scroll alloc_table_scr = kmalloc_page();
+			alloc_table_virt = (uint32_t*)(uintptr_t)alloc_table_scr.vaddr;
+			directory_virt[directory_index] = create_paging_entry(alloc_table_scr.vaddr, true, true, true) | MANUSCRIPT_BIND;
 		}
 		uint32_t table_index = PG_TBL_IDX(current_scr->vaddr);
 		alloc_table_virt[table_index] = create_paging_entry(current_scr->aligned_backend.page, true, true, true);
-		if (directory_index > 0) {
-			scroll_unmap(alloc_table_scr);
-		}
 		current_scr = current_scr->next;
 	}
 
-	scroll_unmap(table_scr);
+	bind_manuscript(directory_virt);
 	scroll_unmap(stack_scr);
-	scroll_unmap(directory_scr);
-
 
 	return directory_scr.aligned_backend.page;
 }
 
 void process_page_fault(void) {
-	kprint("\n\n\nPage fault: kernel will exit.\n");
+	// TODO: Handle page faults correctly. If it's really irrecoverable, use a dedicated panic() function.
+	log(LOG_ERROR, LOG_PAGING, "\n\n\nPage fault: kernel will exit.\n");
 	__asm__ volatile ("cli; hlt");
 }

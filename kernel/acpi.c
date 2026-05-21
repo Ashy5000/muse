@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include "acpi.h"
-#include "../drivers/text.h"
+#include "logging.h"
 
 __attribute__ ((nonstring)) char rsdp_signature[8] = "RSD PTR ";
 
@@ -17,6 +17,7 @@ struct rsdp *find_rsdp() {
 			}
 		}
 		if (correct_signature) {
+			log(LOG_INFO, LOG_ACPI, "Found RSDP at %x.\n", rsdp);
 			return (struct rsdp*)rsdp;
 		}
 	}
@@ -82,7 +83,6 @@ void *find_sdt(char signature[4]) {
 			return header;
 		}
 	}
-	kprint("Failed to find SDT!\n");
 	return 0;
 }
 
@@ -97,5 +97,9 @@ bool verify_sdt(void *sdt) {
 
 void init_acpi() {
 	rsdp_global = find_rsdp();
+	if (!rsdp_global) {
+		log(LOG_ERROR, LOG_ACPI, "Failed to find RSDP!\n");
+		return;
+	}
 	rsdt_global = find_rsdt();
 }

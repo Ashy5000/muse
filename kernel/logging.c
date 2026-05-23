@@ -1,12 +1,21 @@
 #include "logging.h"
 #include "../drivers/text.h"
 
-#define LOG_LEVEL LOG_INFO
+#define DEF_LOG_LEVEL(CLASS, LEVEL) case CLASS:\
+	if (level < LEVEL) { return; }\
+	break;
 
-void log(enum log_level level, enum log_class lclass, const char *fmt, ...) {
-	if (level < LOG_LEVEL) {
-		return;
-	}
+#define DEF_LOG_LEVELS(CASES) switch (lclass) {\
+	CASES\
+	default:\
+		if (level < LOG_INFO) { return; }\
+}
+
+void vlog(enum log_level level, enum log_class lclass, const char *fmt, va_list args) {
+	DEF_LOG_LEVELS (
+		DEF_LOG_LEVEL(LOG_SYSCALL, LOG_DEBUG)
+	);
+
 	switch (level) {
 		case LOG_DEBUG:
 			kprintf_fancy("[DBG] ", VGA_WHITE, VGA_BLACK);
@@ -36,6 +45,9 @@ void log(enum log_level level, enum log_class lclass, const char *fmt, ...) {
 		case LOG_EXCEPTION:
 			kprintf("exception: ");
 			break;
+		case LOG_KERNEL:
+			kprintf("kernel: ");
+			break;
 		case LOG_GPT:
 			kprintf("gpt: ");
 			break;
@@ -54,11 +66,18 @@ void log(enum log_level level, enum log_class lclass, const char *fmt, ...) {
 		case LOG_HPET:
 			kprintf("hpet: ");
 			break;
+		case LOG_SYSCALL:
+			kprintf("syscall: ");
+			break;
 		default:
 			kprintf("???: ");
 	}
+	kvprintf(fmt, args);
+}
+
+void log(enum log_level level, enum log_class lclass, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
-	kvprintf(fmt, args);
+	vlog(level, lclass, fmt, args);
 	va_end(args);
 }

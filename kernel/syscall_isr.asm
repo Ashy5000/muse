@@ -12,8 +12,7 @@ syscall_isr:
 	push %eax
 	push %esp
 	call handle_syscall
-	add $4, %esp
-	pop %eax
+	add $8, %esp
 	pop %ebx
 	pop %ecx
 	pop %edx

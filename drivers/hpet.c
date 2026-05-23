@@ -25,7 +25,7 @@ void stop_hpet() {
 void init_hpet() {
 	// Get the HPET SDT
 	hpet_global = find_sdt("HPET");
-	log(LOG_DEBUG, LOG_HPET, "Found HPET SDT at %x.\n", (uintptr_t)hpet_global);
+	log(LOG_INFO, LOG_HPET, "Found HPET SDT at %x.\n", (uintptr_t)hpet_global);
 
 	// Get the base address of the registers
 	hpet_base = (void*)(uintptr_t)hpet_global->address.address;

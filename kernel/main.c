@@ -1,22 +1,20 @@
-#include "pic.h"
-#include "apic.h"
-#include "interrupts.h"
-#include "../drivers/text.h"
-#include "context.h"
 #include "../drivers/hpet.h"
-#include "pci.h"
+#include "../drivers/text.h"
+#include "apic.h"
 #include "ata.h"
-#include "syscall.h"
+#include "context.h"
 #include "elf.h"
+#include "interrupts.h"
+#include "logging.h"
+#include "pci.h"
+#include "pic.h"
+#include "syscall.h"
 
 extern struct context *active_ctx;
 
 void idle() {
-	unlock_scheduler();
 	for (;;) {
-		lock_scheduler();
 		preempt();
-		unlock_scheduler();
 	}
 }
 
@@ -38,13 +36,18 @@ int main() {
 
 	start_hpet();
 
+	log(LOG_INFO, LOG_KERNEL,
+	    "All essential systems loaded. Welcome to muse!\n");
+
 	load_elf("/ext2/bin/test.o", 0, 0);
 
+	preempt();
+
 	lock_scheduler();
-	create_context(idle, 1, false, 0);
+	create_context(idle, 1, false, 0, 0);
 	unlock_scheduler();
 
-	for(;;) {
+	for (;;) {
 		__asm__("hlt");
 	}
 }

@@ -114,11 +114,7 @@ unsigned char keycode_to_char(unsigned char keycode) {
 	}
 }
 
-bool keyboard_locked = false;
-
 void handle_keypress_inner(void) {
-	// while (keyboard_locked) {}
-	keyboard_locked = true;
 	unsigned char scan_code = inb(0x60);
 	unsigned char character = keycode_to_char(scan_code);
 	if (character == 255) {
@@ -126,7 +122,6 @@ void handle_keypress_inner(void) {
 	} else if (character != 0) {
 		kput_char(character);
 	}
-	keyboard_locked = false;
 	eoi();
 }
 

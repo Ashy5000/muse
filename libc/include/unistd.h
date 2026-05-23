@@ -8,6 +8,7 @@
 extern "C" {
 #endif
 
+void *sbrk(intptr_t increment);
 int execv(const char*, char* const[]);
 int execve(const char*, char* const[], char* const[]);
 int execvp(const char*, char* const[]);

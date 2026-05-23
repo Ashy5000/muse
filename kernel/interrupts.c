@@ -35,7 +35,7 @@ struct idtr idtr_inst;
 void handle_gpf(void) {
 	// TODO: Just terminate the process if it's a user process
 	// TODO: use some sort of panic() function
-	log(LOG_ERROR, LOG_EXCEPTION, "KERNEL PANIC\n============\nA General Protection Fault (GPF) was detected.\n");
+	log(LOG_ERROR, LOG_EXCEPTION, "GPF detected.\n");
 	__asm__ volatile ("cli; hlt");
 }
 

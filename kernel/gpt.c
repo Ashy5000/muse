@@ -8,7 +8,7 @@ bool init_gpt(struct hal_drive *dev) {
 	if (dev->transfer(dev, 1, 1, (uint16_t*)header, DRV_READ)) {
 		return false;
 	}
-	log(LOG_INFO, LOG_GPT, "GPT table detected with %i partitions.", header->partition_count);
+	log(LOG_INFO, LOG_GPT, "GPT table detected with %i partitions.\n", header->partition_count);
 	uint32_t num_sectors = (header->partition_count + 3) / 4;
 	// Go one sector at a time to save memory
 	struct gpt_partition *partitions = kmalloc(SECTOR_SIZE);
@@ -24,7 +24,7 @@ bool init_gpt(struct hal_drive *dev) {
 			if (!guid_nonzero) {
 				continue;
 			}
-			log(LOG_DEBUG, LOG_GPT, "Detected partition from LBA %x-%x", partitions[j].start_lba, partitions[j].end_lba);
+			log(LOG_DEBUG, LOG_GPT, "Detected partition from LBA %x-%x.\n", partitions[j].start_lba, partitions[j].end_lba);
 			detect_ext2(dev, partitions[j]);
 		}
 	}

@@ -9,6 +9,9 @@
 #define ADDR_MASK 0xFFFFF000
 #define TEN_BITS 0x3FF
 
+#define ALIGN_PG_DOWN(X) ((X) - ((X) % PAGE_SIZE))
+#define ALIGN_PG_UP(X) (ALIGN_PG_DOWN(X) + PAGE_SIZE)
+
 typedef uint32_t paging_entry_t;
 typedef paging_entry_t* paging_table_t;
 typedef paging_entry_t leaf_t;

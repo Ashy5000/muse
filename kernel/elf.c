@@ -18,6 +18,7 @@ void load_elf(char *path, uint32_t argc, char **argv) {
 	struct elf_header *header = contents;
 	struct scroll *first_scr = 0;
 	struct scroll *current_scr = 0;
+	vaddr_t limit = 0;
 	for (uint32_t offset = header->program_table_offset;
 			offset < header->program_table_offset + (header->program_table_length * header->program_table_entry_size);
 			offset += header->program_table_entry_size) {
@@ -42,10 +43,13 @@ void load_elf(char *path, uint32_t argc, char **argv) {
 			current_scr->size = PAGE_SIZE;
 			current_scr->next = 0;
 		}
+		if (limit_page > limit) {
+			limit = limit_page;
+		}
 	}
 	lock_scheduler();
 	load_user_call_info((func_ptr_t)(uintptr_t)header->entry_point, argc, argv);
-	create_context(enter_ring3, 1, true, first_scr);
+	create_context(enter_ring3, 1, true, first_scr, limit);
 	uint8_t *data = kmalloc_aligned();
 	current_scr = first_scr;
 	for (uint32_t offset = header->program_table_offset;

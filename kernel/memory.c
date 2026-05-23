@@ -110,7 +110,7 @@ void init_memory(struct context *ctx) {
 		*((uint32_t*)(uintptr_t)mmap_table[0].addr_low) = bitmaps_in_entry;
 	}
 
-	log(LOG_INFO, LOG_MEM, "Wrote physical alloc bitmaps to %x.", mmap_table[0].addr_low);
+	log(LOG_INFO, LOG_MEM, "Wrote physical alloc bitmaps to %x.\n", mmap_table[0].addr_low);
 
 	for (uint32_t i = 0; i < reserved_pages_count; i++) {
 		kpage_set_status(reserved_pages[i], false);

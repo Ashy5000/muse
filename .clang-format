@@ -1,0 +1,8 @@
+UseTab: AlignWithSpaces
+IndentWidth: 8
+TabWidth: 8
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+AlignConsecutiveMacros: true

@@ -6,16 +6,20 @@
 struct context {
 	mem_t esp;
 	paddr_t page_directory;
+
 	bool present;
-	void *heap;
 	struct context *next;
+
+	void *heap; // TODO: Get rid of this
+	bool user;
+	vaddr_t limit;
+
 	uint8_t priority;
 	uint32_t alarm;
 	uint32_t slices_remaining;
-	struct scroll *first_scr;
 };
 
-void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scroll *first_scr);
+void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scroll *first_scr, vaddr_t limit);
 void context_switch(struct context *ctx_new);
 void init_first_ctx(void);
 void lock_scheduler(void);

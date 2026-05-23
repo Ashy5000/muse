@@ -27,6 +27,7 @@ struct context;
 
 void memcpy(void *dst, void *src, mem_t size);
 void *kpage_alloc(void);
+void kpage_set_status(paddr_t addr, bool free);
 void init_memory(struct context *ctx);
 
 #define MAX_RESERVED_PAGES 16

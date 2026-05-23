@@ -101,7 +101,7 @@ void unmap_page(vaddr_t vaddr) {
 	}
 	uint32_t *table = LOOPBACK_TBL(directory_idx);
 	uint32_t table_idx = PG_TBL_IDX(vaddr);
-	table[table_idx] = set_present(table[table_idx], false);
+	table[table_idx] = 0;
 	__asm__ volatile ("invlpg (%0)" :: "r"(vaddr) : "memory" );
 }
 
@@ -177,6 +177,7 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *fir
 	paging_table_t table_virt = (uint32_t*)(uintptr_t)table_scr.vaddr;
 
 	directory_virt[0] = create_paging_entry((vaddr_t)table_virt, true, true, true) | MANUSCRIPT_BIND;
+	directory_virt[(PAGE_SIZE / sizeof(paging_entry_t)) - 1] = create_paging_entry(directory_scr.aligned_backend.page, true, true, false);
 
 	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(paging_entry_t); i++) {
 		table_virt[i] = table_active[i];

@@ -10,7 +10,7 @@ _start:
 	push %esi // argv
 	push %edi // argc
 
-	// TODO: Init std
+	call init_std
 	call _init // Global constructors
 
 	pop %edi // argc

@@ -70,13 +70,15 @@ disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin $(INCLUDE_DIR) $(LI
 	-sudo umount /dev/loop0 -q
 	sudo losetup -D
 	sudo losetup /dev/loop0 disk.bin -o 2097152
-	sudo mke2fs /dev/loop0 63453k
+	sudo sh -c "yes | mke2fs /dev/loop0 63453k"
 	sudo mount /dev/loop0 /mnt
 	sudo rm -rf /mnt/lost+found
 	sudo cp -r fs/* /mnt/
 	sync
 
-build: disk.bin runtime
+libc: $(LIBC_PATH)
+
+build: disk.bin
 
 run: build
 	qemu-system-i386 -drive format=raw,file=disk.bin -no-reboot -no-shutdown -gdb tcp::9000
@@ -90,4 +92,4 @@ clean:
 todo:
 	-@for file in $(ALL_SRC:Makefile=); do grep -F -H -e TODO -e FIXME $$file; done; true
 
-.PHONY: runtime libc build run debug clean todo
+.PHONY: libc build run debug clean todo

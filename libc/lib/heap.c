@@ -1,17 +1,16 @@
 #include <stdint.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #define TIER_IDX(X) ((31 - __builtin_clz((uintptr_t)X)) - MIN_CHUNK_SIZE_LOG)
-#define MIN_CHUNK_SIZE_LOG 4
-#define MIN_CHUNK_SIZE     (1 << MIN_CHUNK_SIZE_LOG)
-#define MAX_CHUNK_SIZE_LOG 15
-#define MAX_CHUNK_SIZE     (1 << MAX_CHUNK_SIZE_LOG)
-#define TIER_CNT           MAX_CHUNK_SIZE_LOG - MIN_CHUNK_SIZE_LOG + 1
-#define MERGE_THRESH       2
-#define CHUNK_OVERHEAD     (2 * sizeof(size_t))
-#define BIT_FREE           1
-#define SIZE_MASK          (~BIT_FREE)
+#define MIN_CHUNK_SIZE_LOG   4
+#define MIN_CHUNK_SIZE       (1 << MIN_CHUNK_SIZE_LOG)
+#define CHUNK_SIZE_LIMIT_LOG 15
+#define CHUNK_SIZE_LIMIT     (1 << MAX_CHUNK_SIZE_LOG)
+#define TIER_CNT             CHUNK_SIZE_LIMIT_LOG - MIN_CHUNK_SIZE_LOG
+#define CHUNK_OVERHEAD       (2 * sizeof(size_t))
+#define BIT_FREE             1
+#define SIZE_MASK            (~BIT_FREE)
 
 struct heap {
 	size_t size;
@@ -22,7 +21,7 @@ struct heap {
 
 struct chunk {
 	size_t prev_size;
-	size_t size; // Includes overhead
+	size_t size; /* Includes overhead */
 	struct chunk *next;
 	// The end of the chunk contains an identical copy of size.
 	// This makes combining chunks faster.
@@ -71,13 +70,16 @@ void split_chunk(struct chunk *ch, size_t size) {
 }
 
 void *malloc(size_t size) {
+	size_t ch_size = size + CHUNK_OVERHEAD >= MIN_CHUNK_SIZE
+	                     ? size + CHUNK_OVERHEAD
+	                     : MIN_CHUNK_SIZE;
 	unsigned int i =
-	    TIER_IDX(size); /* The index of the tier the chunk will be in. */
+	    TIER_IDX(ch_size); /* The index of the tier the chunk will be in. */
 	struct chunk *ch =
 	    global_heap.tiers[i]; /* The chunk we are examining. */
 	struct chunk *prev = 0;   /* The previous chunk. */
 	while (ch) {
-		if ((ch->size & SIZE_MASK) < size + CHUNK_OVERHEAD) {
+		if ((ch->size & SIZE_MASK) < ch_size) {
 			/* There isn't enough room in the chunk. */
 			prev = ch;
 			ch   = ch->next;
@@ -92,8 +94,8 @@ void *malloc(size_t size) {
 
 		/* Is it worth it to split into two chunks?
 		   TODO: Parametrize this better */
-		if ((ch->size & ~BIT_FREE) >=
-		    size + MIN_CHUNK_SIZE + (2 * CHUNK_OVERHEAD)) {
+		if ((ch->size & SIZE_MASK) >=
+		    ch_size + MIN_CHUNK_SIZE + CHUNK_OVERHEAD) {
 			split_chunk(ch, size);
 		}
 		return (void *)ch + CHUNK_OVERHEAD;
@@ -102,9 +104,23 @@ void *malloc(size_t size) {
 	struct chunk *new_ch =
 	    global_heap.limit - sizeof(size_t); /* Overlap with prev_size stored
 	                                           at the end of the heap */
-	sbrk(size + CHUNK_OVERHEAD); /* Make sure to allocate a new terminating
+	sbrk(ch_size); /* Make sure to allocate a new terminating
 	                                       prev_size */
-	new_ch->size = size + CHUNK_OVERHEAD;
-	global_heap.limit += new_ch->size;
+	new_ch->size = ch_size;
+	global_heap.limit += ch_size;
 	return (void *)new_ch + CHUNK_OVERHEAD;
+}
+
+void free(void *ptr) {
+	struct chunk *ch = ptr - CHUNK_OVERHEAD;
+	if (ch->prev_size & BIT_FREE) {
+		struct chunk *merged_ch =
+		    (void *)ch - (ch->prev_size & SIZE_MASK);
+		merged_ch->size += ch->size;
+		ch = merged_ch;
+	}
+	ch->size |= BIT_FREE;
+	unsigned int i       = TIER_IDX(ch->size & SIZE_MASK);
+	ch->next             = global_heap.tiers[i];
+	global_heap.tiers[i] = ch;
 }

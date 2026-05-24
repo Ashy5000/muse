@@ -14,6 +14,8 @@ extern void syscall_isr(void);
 
 extern uint32_t timer_irq;
 
+extern struct context *active_ctx;
+
 struct __attribute__((packed)) idt_entry {
 	uint16_t isr_addr_low;
 	uint16_t kernel_cs;
@@ -33,7 +35,10 @@ struct __attribute__((packed)) idtr {
 struct idtr idtr_inst;
 
 void handle_gpf(void) {
-	// TODO: Just terminate the process if it's a user process
+	if (active_ctx->user) {
+		log(LOG_WARN, LOG_EXCEPTION, "User process caused a GPF. Terminating.\n");
+		terminate();
+	}
 	// TODO: use some sort of panic() function
 	log(LOG_ERROR, LOG_EXCEPTION, "GPF detected.\n");
 	__asm__ volatile ("cli; hlt");

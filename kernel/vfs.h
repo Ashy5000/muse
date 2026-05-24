@@ -7,9 +7,10 @@
 struct vfs_inode;
 struct vfs_tnode;
 
-typedef void (*fn_read_t)(struct vfs_inode*, uint32_t, uint32_t, void*);
-typedef void (*fn_write_t)(struct vfs_inode*, uint32_t, uint32_t, void*);
-typedef void (*fn_register_inode_t)(struct vfs_inode*, struct vfs_tnode*);
+typedef void (*fn_read_t)(struct vfs_inode *, uint32_t, uint32_t, void *);
+typedef void (*fn_write_t)(struct vfs_inode *, uint32_t, uint32_t, void *);
+typedef void (*fn_truncate_t)(struct vfs_inode *);
+typedef void (*fn_register_inode_t)(struct vfs_inode *, struct vfs_tnode *);
 
 struct vfs_inode {
 	bool present;
@@ -21,6 +22,7 @@ struct vfs_inode {
 
 	fn_read_t read;
 	fn_write_t write;
+	fn_truncate_t truncate;
 
 	// Directory + mount point only
 	struct vfs_tnode *first_child;
@@ -39,6 +41,18 @@ struct vfs_mount_point {
 	struct vfs_inode inode;
 	char *path;
 	struct vfs_mount_point *next;
+};
+
+#define MODE_READ     1
+#define MODE_WRITE    2
+#define MODE_APPEND   4
+#define MODE_TRUNCATE 8
+#define MODE_CREATE   16
+
+struct file {
+	struct vfs_inode *inode;
+	uint32_t pos;
+	uint8_t mode;
 };
 
 void mount(struct vfs_inode inode, char *path);

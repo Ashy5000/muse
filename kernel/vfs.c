@@ -4,10 +4,11 @@
 struct vfs_mount_point *first_mount_point = 0;
 
 void mount(struct vfs_inode inode, char *path) {
-	struct vfs_mount_point *mount_point = kmalloc(sizeof(struct vfs_mount_point));
+	struct vfs_mount_point *mount_point =
+	    kmalloc(sizeof(struct vfs_mount_point));
 	mount_point->inode = inode;
-	mount_point->path = path;
-	mount_point->next = 0;
+	mount_point->path  = path;
+	mount_point->next  = 0;
 	if (first_mount_point) {
 		mount_point->next = first_mount_point;
 	}
@@ -16,7 +17,7 @@ void mount(struct vfs_inode inode, char *path) {
 
 struct vfs_inode vfs_open(char *path) {
 	struct vfs_mount_point *mount_point = first_mount_point;
-	bool success = false;
+	bool success                        = false;
 	char *start = path + 1; // Account for the '/' after mount point path
 	while (mount_point) {
 		uint32_t i = 0;
@@ -43,7 +44,7 @@ struct vfs_inode vfs_open(char *path) {
 	if (!success) {
 		return inode;
 	}
-	inode = mount_point->inode;
+	inode     = mount_point->inode;
 	char *end = start;
 	while (*start) {
 		while (*end && (*end != '/')) {
@@ -51,7 +52,7 @@ struct vfs_inode vfs_open(char *path) {
 		}
 
 		struct vfs_tnode *tnode = inode.first_child;
-		bool success = false;
+		bool success            = false;
 		while (tnode) {
 			bool match = true;
 			if (tnode->name_len != (uintptr_t)(end - start)) {
@@ -70,7 +71,7 @@ struct vfs_inode vfs_open(char *path) {
 			if (!tnode->inode.present) {
 				inode.register_inode(&inode, tnode);
 			}
-			inode = tnode->inode;
+			inode   = tnode->inode;
 			success = true;
 			break;
 		}

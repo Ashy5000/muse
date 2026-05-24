@@ -9,8 +9,8 @@
 #define ADDR_MASK 0xFFFFF000
 #define TEN_BITS 0x3FF
 
-#define ALIGN_PG_DOWN(X) ((X) - ((X) % PAGE_SIZE))
-#define ALIGN_PG_UP(X) (ALIGN_PG_DOWN(X) + PAGE_SIZE)
+#define ALIGN_PG_DOWN(X) ((vaddr_t)(X) - ((vaddr_t)(X) % PAGE_SIZE))
+#define ALIGN_PG_UP(X) (ALIGN_PG_DOWN((vaddr_t)X) + PAGE_SIZE)
 
 typedef uint32_t paging_entry_t;
 typedef paging_entry_t* paging_table_t;
@@ -23,6 +23,7 @@ void map_page_range_inactive(paging_table_t directory, vaddr_t vaddr, paddr_t pa
 void map_page(vaddr_t vaddr, paddr_t paddr);
 void unmap_page(vaddr_t vaddr);
 paddr_t get_page_mapping(vaddr_t vaddr);
+bool check_user(vaddr_t vaddr);
 paddr_t create_task_directory(func_ptr_t func_ptr, bool user, struct scroll *first_scr);
 
 #endif

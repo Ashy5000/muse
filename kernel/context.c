@@ -28,6 +28,10 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user, struct scr
 	ctx_new->esp = (uintptr_t)(TASK_STACK_BASE - (5 * sizeof(uint32_t)));
 	ctx_new->limit = limit;
 	ctx_new->next = 0;
+	ctx_new->user = user;
+	for (unsigned int i = 0; i < FOPEN_MAX; i++) {
+		ctx_new->files[i].mode = 0;
+	}
 	if (next_ctx == 0) {
 		next_ctx = ctx_new;
 		last_ctx = ctx_new;

@@ -1,7 +1,6 @@
 #include "../drivers/hpet.h"
 #include "../drivers/text.h"
 #include "apic.h"
-#include "ata.h"
 #include "context.h"
 #include "elf.h"
 #include "interrupts.h"

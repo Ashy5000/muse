@@ -1,10 +1,9 @@
 #ifndef GPT_H
 #define GPT_H
 
-#include <stdint.h>
-#include <stdbool.h>
 #include "ata.h"
-#include "hal.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 struct gpt_table_header {
 	char signature[8];
@@ -23,6 +22,8 @@ struct gpt_table_header {
 	uint32_t table_checksum;
 };
 
+/* The gpt_partition struct holds the raw partition structures that are stored
+ * in the partition table. */
 struct gpt_partition {
 	char partition_type_guid[16];
 	char partition_guid[16];
@@ -32,6 +33,13 @@ struct gpt_partition {
 	uint16_t name[36]; // UNICODE16-LE encoded
 };
 
+/* The partition struct is a higher-level abstracted interface that most of the
+ * rest of the kernel should use. */
+struct partition {
+	struct hal_drive *dev;
+	uint32_t start;
+	uint32_t limit;
+};
 
 bool init_gpt(struct hal_drive *dev);
 

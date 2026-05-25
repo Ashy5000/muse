@@ -63,12 +63,11 @@ uint32_t syscall_open(uint32_t *args) {
 		return -1;
 	}
 
-	struct vfs_inode *inode = kmalloc(sizeof(*inode));
-	if (!inode->present) {
+	struct vfs_inode *inode = vfs_open(path);
+	if (!inode) {
 		// TODO: If MODE_CREATE is set, create a file.
 		return -2;
 	}
-	*inode = vfs_open(path);
 	for (unsigned int i = 0; i < FOPEN_MAX; i++) {
 		if (active_ctx->files[i].mode == 0) {
 			active_ctx->files[i].inode = inode;

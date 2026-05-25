@@ -1,10 +1,9 @@
 #ifndef EXT2_H
 #define EXT2_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include "gpt.h"
 #include "hal.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 struct ext2_superblock {
 	uint32_t total_inodes;
@@ -97,12 +96,14 @@ struct ext2_directory_entry {
 };
 
 struct ext2_vfs_payload {
+	uint32_t group;
 	struct ext2_inode inode;
 	struct hal_drive *dev;
-	struct gpt_partition *partition;
+	struct partition *partition;
 	struct ext2_superblock *superblock;
 };
 
-enum hal_drive_res detect_ext2(struct hal_drive *dev, struct gpt_partition partition);
+enum hal_drive_res detect_ext2(struct hal_drive *dev,
+                               struct partition *partition);
 
 #endif

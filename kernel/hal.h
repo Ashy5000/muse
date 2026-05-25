@@ -1,6 +1,7 @@
 #ifndef HAL_H
 #define HAL_H
 
+#include "gpt.h"
 #include <stdint.h>
 
 #define DEV_DRIVE 0
@@ -22,9 +23,11 @@ enum hal_drive_dir {
 };
 
 struct hal_drive {
+	uint32_t sector_size;
 	uint8_t type;
-	enum hal_drive_res status;
-	__attribute__((warn_unused_result)) enum hal_drive_res (*transfer)(struct hal_drive *dev, lba_t lba, uint8_t sector_count, void *data, enum hal_drive_dir dir);
+	__attribute__((warn_unused_result)) enum hal_drive_res (*transfer)(
+	    struct partition *partition, lba_t lba, uint8_t sector_count,
+	    void *data, enum hal_drive_dir dir);
 	void *backend_data;
 };
 

@@ -25,7 +25,15 @@ enum log_class {
 	LOG_SYSCALL,
 };
 
-void vlog(enum log_level level, enum log_class lclass, const char *fmt, va_list args);
+/* This macro should be used to signal an impossible branch of execution. */
+#define THERE_ARE_FOUR_LIGHTS(R)                                               \
+	log(LOG_ERROR, LOG_KERNEL,                                             \
+	    "**There...are...four...lights...**\nSomething occured which "     \
+	    "should not be possible: %s.\n",                                   \
+	    (R))
+
+void vlog(enum log_level level, enum log_class lclass, const char *fmt,
+          va_list args);
 void log(enum log_level level, enum log_class lclass, const char *fmt, ...);
 
 #endif

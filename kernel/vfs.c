@@ -1,5 +1,6 @@
 #include "vfs.h"
 #include "alloc.h"
+#include <stddef.h>
 
 struct vfs_mount_point *first_mount_point = 0;
 
@@ -15,7 +16,7 @@ void mount(struct vfs_inode inode, char *path) {
 	first_mount_point = mount_point;
 }
 
-struct vfs_inode vfs_open(char *path) {
+struct vfs_inode *vfs_open(char *path) {
 	struct vfs_mount_point *mount_point = first_mount_point;
 	bool success                        = false;
 	char *start = path + 1; // Account for the '/' after mount point path
@@ -39,19 +40,17 @@ struct vfs_inode vfs_open(char *path) {
 		}
 		mount_point = mount_point->next;
 	}
-	struct vfs_inode inode;
-	inode.present = false;
 	if (!success) {
-		return inode;
+		return 0;
 	}
-	inode     = mount_point->inode;
-	char *end = start;
-	while (*start) {
+	struct vfs_inode *inode = &mount_point->inode;
+	char *end               = start;
+	while (1) {
 		while (*end && (*end != '/')) {
 			end++;
 		}
 
-		struct vfs_tnode *tnode = inode.first_child;
+		struct vfs_tnode *tnode = inode->first_child;
 		bool success            = false;
 		while (tnode) {
 			bool match = true;
@@ -69,13 +68,16 @@ struct vfs_inode vfs_open(char *path) {
 				continue;
 			}
 			if (!tnode->inode.present) {
-				inode.register_inode(&inode, tnode);
+				inode->register_inode(inode, tnode);
 			}
-			inode   = tnode->inode;
+			inode   = &tnode->inode;
 			success = true;
 			break;
 		}
 		if (!success) {
+			return 0;
+		}
+		if (!*end) {
 			break;
 		}
 		end++;
@@ -83,4 +85,21 @@ struct vfs_inode vfs_open(char *path) {
 	}
 
 	return inode;
+}
+
+struct vfs_inode *vfs_create(char *path) {
+	char *dir_limit = path;
+	char *lookahead = path;
+	while (*lookahead) {
+		if (*lookahead == '/') {
+			dir_limit = lookahead;
+		}
+		lookahead++;
+	}
+	size_t dir_path_len = lookahead - dir_limit;
+	char *dir_path      = kmalloc(dir_path_len + 1);
+	memcpy(dir_path, path, dir_path_len);
+	dir_path[dir_path_len] = 0;
+	struct vfs_inode *dir  = vfs_open(dir_path);
+	return dir->create_child_file(dir, dir_limit + 1);
 }

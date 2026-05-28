@@ -1,11 +1,11 @@
 [org 0x7c00]
 
-KERNEL_OFFSET equ 0x1000
-
-mov bp, 0x9000 ; Bottom of the stack (higher address)
-mov sp, bp ; Top of the stack (lower address)
+KERNEL_OFFSET equ 0x8000
 
 mov [BOOT_DRIVE], dl ; BIOS stores boot drive in dl. Store into memory.
+
+mov ebp, 0x9fbff ; Move stack to top of memory
+mov esp, ebp
 
 in al, 0x92
 or al, 2
@@ -13,9 +13,6 @@ out 0x92, al
 
 call get_memory_info
 
-mov bx, KERNEL_OFFSET ; Address in memory to load to
-mov dh, 50 ; Load 50 sectors
-mov dl, [BOOT_DRIVE] ; Load from boot drive
 call read_kernel ; Read the kernel from the disk
 
 call protected_ascend ; The journey begins...

@@ -38,7 +38,7 @@ bool init_gpt(struct hal_drive *dev) {
 			abstract_partition->dev   = dev;
 			abstract_partition->start = partitions[j].start_lba;
 			abstract_partition->limit = partitions[j].end_lba;
-			detect_ext2(dev, abstract_partition);
+			detect_ext2(abstract_partition);
 		}
 	}
 	kfree(partitions);

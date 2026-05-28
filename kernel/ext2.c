@@ -9,8 +9,7 @@
 
 __attribute__((warn_unused_result)) enum hal_drive_res
 group_descriptor_transfer(struct ext2_superblock *superblock,
-                          struct hal_drive *dev, struct partition *partition,
-                          uint32_t idx,
+                          struct partition *partition, uint32_t idx,
                           struct ext2_block_group_descriptor *descriptor,
                           enum hal_drive_dir dir) {
 	uint32_t block_size = 1024 << superblock->block_size_log;
@@ -19,7 +18,7 @@ group_descriptor_transfer(struct ext2_superblock *superblock,
 	lba += MAX(block_size, 2048) / SECTOR_SIZE;
 	struct ext2_block_group_descriptor *descriptors = kmalloc(SECTOR_SIZE);
 	enum hal_drive_res err =
-	    dev->transfer(partition, lba, 1, descriptors, DRV_READ);
+	    partition->dev->transfer(partition, lba, 1, descriptors, DRV_READ);
 	if (err) {
 		return err;
 	}
@@ -28,7 +27,8 @@ group_descriptor_transfer(struct ext2_superblock *superblock,
 		            (SECTOR_SIZE /
 		             sizeof(struct ext2_block_group_descriptor))] =
 		    *descriptor;
-		err = dev->transfer(partition, lba, 1, descriptors, DRV_READ);
+		err = partition->dev->transfer(partition, lba, 1, descriptors,
+		                               DRV_READ);
 		if (err) {
 			return err;
 		}
@@ -42,65 +42,168 @@ group_descriptor_transfer(struct ext2_superblock *superblock,
 	return DRV_SUCCESS;
 }
 
-enum hal_drive_res get_inode(struct ext2_superblock *superblock,
-                             struct hal_drive *dev, struct partition *partition,
-                             uint32_t inode_i, struct ext2_inode *inode) {
+enum hal_drive_res inode_transfer(struct ext2_superblock *superblock,
+                                  struct partition *partition, uint32_t inode_i,
+                                  struct ext2_inode *inode,
+                                  enum hal_drive_dir dir) {
 	uint32_t group      = (inode_i - 1) / superblock->inodes_per_group;
 	uint32_t idx        = (inode_i - 1) % superblock->inodes_per_group;
 	uint32_t inode_size = 128;
 	if (superblock->version_maj >= 1) {
 		inode_size = superblock->inode_size;
+		log(LOG_DEBUG, LOG_EXT2, "inode_size is %x.\n", inode_size);
 	}
 	uint32_t lba        = (idx * inode_size / SECTOR_SIZE);
 	uint32_t block_size = 1024 << superblock->block_size_log;
 
 	struct ext2_block_group_descriptor group_descriptor;
 	enum hal_drive_res err = group_descriptor_transfer(
-	    superblock, dev, partition, group, &group_descriptor, DRV_READ);
+	    superblock, partition, group, &group_descriptor, DRV_READ);
 	if (err) {
 		return err;
 	}
 
 	lba += group_descriptor.inode_table * block_size / SECTOR_SIZE;
 	struct ext2_inode *inodes = kmalloc(SECTOR_SIZE);
-	err = dev->transfer(partition, lba, 1, (uint16_t *)inodes, DRV_READ);
+	err = partition->dev->transfer(partition, lba, 1, (uint16_t *)inodes,
+	                               DRV_READ);
 	if (err) {
+		kfree(inodes);
 		return err;
 	}
 
 	uint32_t offset = idx % (SECTOR_SIZE / inode_size);
-	*inode =
-	    *((struct ext2_inode *)(((void *)inodes) + (offset * inode_size)));
+	if (dir == DRV_READ) {
+		*inode = *((struct ext2_inode *)(((void *)inodes) +
+		                                 (offset * inode_size)));
+	} else {
+		*((struct ext2_inode *)(((void *)inodes) +
+		                        (offset * inode_size))) = *inode;
+		err = partition->dev->transfer(partition, lba, 1,
+		                               (uint16_t *)inodes, DRV_WRITE);
+		if (err) {
+			kfree(inodes);
+			return err;
+		}
+	}
 	kfree(inodes);
 	return DRV_SUCCESS;
 }
 
-enum hal_drive_res inode_data_transfer(uint32_t block_size,
-                                       struct hal_drive *dev,
+/* Attempts to allocate either a data block or an inode for a particular block
+ * group.
+ * Data block (inode = false): Returns the block address of the allocated
+ *	block, or 0 if no free block is found.
+ * Inode (inode = true): Returns the
+ *	inode's ID, which can be passed to get_inode() to retrieve the inode
+ *	itself. Returns 0 if no free inode is found.
+ */
+uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
+                        struct partition *partition, uint32_t group,
+                        bool inode) {
+	struct ext2_block_group_descriptor descriptor;
+	enum hal_drive_res err = group_descriptor_transfer(
+	    superblock, partition, group, &descriptor, DRV_READ);
+	if (err) {
+		return 0;
+	}
+	if (inode && !descriptor.unallocated_inodes) {
+		return 0;
+	}
+	if (!inode && !descriptor.unallocated_blocks) {
+		return 0;
+	}
+	uint32_t block_size = 1024 << superblock->block_size_log;
+	err = group_descriptor_transfer(superblock, partition, group,
+	                                &descriptor, DRV_READ);
+	if (err) {
+		return 0;
+	}
+	uint32_t bitmap_lba;
+	if (inode) {
+		bitmap_lba =
+		    (descriptor.inode_bitmap_addr * block_size / SECTOR_SIZE);
+	} else {
+		bitmap_lba =
+		    (descriptor.block_bitmap_addr * block_size / SECTOR_SIZE);
+	}
+	uint8_t *bitmap = kmalloc(block_size);
+	err             = partition->dev->transfer(
+	    partition, bitmap_lba, block_size / SECTOR_SIZE, bitmap, DRV_READ);
+	if (err) {
+		return 0;
+	}
+	for (size_t i = 0; i < block_size; i++) {
+		uint8_t bitmap_byte = bitmap[i];
+		for (uint8_t j = 0; j < 8; j++) {
+			if (!((bitmap_byte >> j) & 1)) {
+				bitmap[i] |= 1 << j;
+				err = partition->dev->transfer(
+				    partition, bitmap_lba,
+				    block_size / SECTOR_SIZE, bitmap,
+				    DRV_WRITE);
+				kfree(bitmap);
+				if (err) {
+					return 0;
+				}
+				if (inode) {
+					return (group *
+					        superblock->inodes_per_group) +
+					       (i * 8) + j + 1;
+				} else {
+					return (group *
+					        superblock->blocks_per_group) +
+					       (i * 8) + j;
+				}
+			}
+		}
+	}
+	kfree(bitmap);
+	THERE_ARE_FOUR_LIGHTS("a EXT2 block group's bitmap did not match its "
+	                      "unallocated object count");
+	return 0;
+}
+
+enum hal_drive_res inode_data_transfer(struct ext2_superblock *superblock,
                                        struct partition *partition,
-                                       struct ext2_inode inode, uint32_t idx,
+                                       __attribute__((unused)) uint32_t inode_i,
+                                       struct ext2_inode *inode, uint32_t idx,
                                        void *data, enum hal_drive_dir dir) {
 	enum hal_drive_res err = DRV_ERR_BAD_ARGS;
+	uint32_t block_size    = 1024 << superblock->block_size_log;
+	uint32_t lba           = 0;
+	log(LOG_DEBUG, LOG_EXT2,
+	    "inode_data_transfer() called with idx = %i.\n", idx);
 	if (idx < 12) {
-		uint32_t lba =
-		    (inode.direct_blocks[idx] * block_size / SECTOR_SIZE);
-		err = dev->transfer(partition, lba, block_size / SECTOR_SIZE,
-		                    data, dir);
-		return err;
-	}
-	if (idx < 12 + (block_size / sizeof(uint32_t))) {
+		lba = (inode->direct_blocks[idx] * block_size / SECTOR_SIZE);
+	} else if (idx < 12 + (block_size / sizeof(uint32_t))) {
+		if (!inode->indirect_block_single) {
+			if (dir == DRV_READ) {
+				return DRV_ERR_BAD_ARGS;
+			}
+			inode->indirect_block_single = alloc_ext2_obj(
+			    superblock, partition, inode->group_id, false);
+			err = inode_transfer(superblock, partition, inode_i,
+			                     inode, DRV_WRITE);
+		}
 		// Singly indirect block
-		err = dev->transfer(partition, inode.indirect_block_single,
-		                    block_size / SECTOR_SIZE, data, dir);
+		void *indirect_block = kmalloc(block_size);
+		err                  = partition->dev->transfer(
+		    partition, inode->indirect_block_single,
+		    block_size / SECTOR_SIZE, indirect_block, DRV_READ);
 		if (err) {
 			return err;
 		}
 		uint32_t lba = ((uint32_t *)data)[idx - 12];
-		err = dev->transfer(partition, lba, block_size / SECTOR_SIZE,
-		                    data, dir);
-		return err;
+		err          = partition->dev->transfer(
+		    partition, lba, block_size / SECTOR_SIZE, data, dir);
+		if (err) {
+			return err;
+		}
 	}
 	// TODO: Handle doubly and triply indirect blocks
+	err = partition->dev->transfer(partition, lba, block_size / SECTOR_SIZE,
+	                               data, dir);
 	return err;
 }
 
@@ -119,9 +222,9 @@ enum hal_drive_res enumerate_children(struct vfs_inode *inode_v) {
 	struct ext2_directory_entry *entry = buf;
 	enum hal_drive_res err;
 	for (uint32_t i = 0; i < blocks; i++) {
-		err = inode_data_transfer(block_size, payload->dev,
-		                          payload->partition, inode, i,
-		                          buf + (block_size * i), DRV_READ);
+		err = inode_data_transfer(
+		    payload->superblock, payload->partition, payload->inode_id,
+		    &inode, i, buf + (block_size * i), DRV_READ);
 		if (err) {
 			return err;
 		}
@@ -130,7 +233,7 @@ enum hal_drive_res enumerate_children(struct vfs_inode *inode_v) {
 		if (entry->inode == 0) {
 			break;
 		}
-		struct vfs_tnode *tnode = kmalloc(sizeof(struct vfs_tnode));
+		struct vfs_tnode *tnode = kmalloc(sizeof(*tnode));
 		char *name              = kmalloc(entry->name_len);
 		memcpy(name, entry->name, entry->name_len);
 		tnode->name          = name;
@@ -146,73 +249,6 @@ enum hal_drive_res enumerate_children(struct vfs_inode *inode_v) {
 	return DRV_SUCCESS;
 }
 
-/* Attempts to allocate either a data block or an inode for a particular block
- * group.
- * Data block (inode = false): Returns the block address of the allocated
- *	block, or 0 if no free block is found.
- * Inode (inode = true): Returns the
- *	inode's ID, which can be passed to get_inode() to retrieve the inode
- *	itself. Returns 0 if no free inode is found.
- */
-uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
-                        struct hal_drive *dev, struct partition *partition,
-                        uint32_t group,
-                        struct ext2_block_group_descriptor *descriptor,
-                        bool inode) {
-	if (inode && !descriptor->unallocated_inodes) {
-		return 0;
-	}
-	if (!inode && !descriptor->unallocated_blocks) {
-		return 0;
-	}
-	uint32_t block_size    = 1024 << superblock->block_size_log;
-	enum hal_drive_res err = group_descriptor_transfer(
-	    superblock, dev, partition, group, descriptor, DRV_READ);
-	if (err) {
-		return 0;
-	}
-	uint32_t bitmap_lba;
-	if (inode) {
-		bitmap_lba =
-		    (descriptor->inode_bitmap_addr * block_size / SECTOR_SIZE);
-	} else {
-		bitmap_lba =
-		    (descriptor->block_bitmap_addr * block_size / SECTOR_SIZE);
-	}
-	uint8_t *bitmap = kmalloc(sizeof(*bitmap));
-	err = dev->transfer(partition, bitmap_lba, block_size / SECTOR_SIZE,
-	                    bitmap, DRV_READ);
-	if (err) {
-		return 0;
-	}
-	for (size_t i = 0; i < block_size; i++) {
-		uint8_t bitmap_byte = bitmap[i];
-		for (uint8_t j = 0; j < 8; j++) {
-			if (!((bitmap_byte >> j) & 1)) {
-				bitmap[i] |= 1 << j;
-				err = dev->transfer(partition, bitmap_lba,
-				                    block_size / SECTOR_SIZE,
-				                    bitmap, DRV_WRITE);
-				if (err) {
-					return 0;
-				}
-				if (inode) {
-					return (group *
-					        superblock->inodes_per_group) +
-					       (i * 8) + j + 1;
-				} else {
-					return (group *
-					        superblock->blocks_per_group) +
-					       (i * 8) + j;
-				}
-			}
-		}
-	}
-	THERE_ARE_FOUR_LIGHTS("a EXT2 block group's bitmap did not match its "
-	                      "unallocated object count");
-	return 0;
-}
-
 uint32_t alloc_child_inode(struct vfs_inode *parent) {
 	struct ext2_vfs_payload *payload = parent->backend_data;
 	uint32_t parent_group            = payload->group;
@@ -221,24 +257,15 @@ uint32_t alloc_child_inode(struct vfs_inode *parent) {
 	/* Check every block group, moving outward from the parent group. This
 	 * will locate the allocated inode as close to the parent as possible.
 	 */
-	struct ext2_block_group_descriptor group_descriptor;
-	enum hal_drive_res err;
 	for (uint32_t d = 0;
 	     d < MAX(parent_group, group_cnt - parent_group - 1); d++) {
 		uint32_t group;
 		if (parent_group >= d) {
 			// Check earlier inode
 			group = parent_group - d;
-			err   = group_descriptor_transfer(
-			    payload->superblock, payload->dev,
-			    payload->partition, group, &group_descriptor,
-			    DRV_READ);
-			if (err) {
-				return 0;
-			}
-			uint32_t inode = alloc_ext2_obj(
-			    payload->superblock, payload->dev,
-			    payload->partition, group, &group_descriptor, true);
+			uint32_t inode =
+			    alloc_ext2_obj(payload->superblock,
+			                   payload->partition, group, true);
 			if (inode) {
 				return inode;
 			}
@@ -246,16 +273,9 @@ uint32_t alloc_child_inode(struct vfs_inode *parent) {
 		if (parent_group + d < group_cnt) {
 			// Check later inode
 			group = parent_group + d;
-			err   = group_descriptor_transfer(
-			    payload->superblock, payload->dev,
-			    payload->partition, group, &group_descriptor,
-			    DRV_READ);
-			if (err) {
-				return 0;
-			}
-			uint32_t inode = alloc_ext2_obj(
-			    payload->superblock, payload->dev,
-			    payload->partition, group, &group_descriptor, true);
+			uint32_t inode =
+			    alloc_ext2_obj(payload->superblock,
+			                   payload->partition, group, true);
 			if (inode) {
 				return inode;
 			}
@@ -283,8 +303,7 @@ uint32_t alloc_child_inode(struct vfs_inode *parent) {
 // 	struct ext2_vfs_payload *payload = parent->backend_data;
 // 	uint32_t block_size = 1024 << payload->superblock->block_size_log;
 // 	uint32_t blocks     = payload->inode.size_lo / block_size;
-//
-// 	void *buf           = kmalloc(block_size * blocks);
+// void *buf           = kmalloc(block_size * blocks);
 // 	struct ext2_directory_entry *entry = buf;
 // 	for (uint32_t i = 0; i < blocks; i++) {
 // 		if (inode_data_transfer(block_size, payload->dev,
@@ -320,8 +339,8 @@ uint32_t ext2_read(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 	uint32_t bytes_written = 0;
 	for (;;) {
 		enum hal_drive_res err = inode_data_transfer(
-		    block_size, payload->dev, payload->partition,
-		    payload->inode, block, bfr, DRV_READ);
+		    payload->superblock, payload->partition, payload->inode_id,
+		    &payload->inode, block, bfr, DRV_READ);
 		if (err) {
 			break;
 		}
@@ -357,9 +376,9 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	child_payload->superblock               = parent_payload->superblock;
 	child_payload->dev                      = parent_payload->dev;
 	child_payload->partition                = parent_payload->partition;
-	get_inode(child_payload->superblock, child_payload->dev,
-	          child_payload->partition, tchild->inode_id,
-	          &child_payload->inode);
+	child_payload->inode_id                 = tchild->inode_id;
+	inode_transfer(child_payload->superblock, child_payload->partition,
+	               tchild->inode_id, &child_payload->inode, DRV_READ);
 	child_payload->group = (tchild->inode_id - 1) /
 	                       child_payload->superblock->inodes_per_group;
 	enumerate_children(&child);
@@ -370,12 +389,11 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	tchild->inode        = child;
 }
 
-enum hal_drive_res detect_ext2(struct hal_drive *dev,
-                               struct partition *partition) {
+enum hal_drive_res detect_ext2(struct partition *partition) {
 	struct ext2_superblock *superblock = kmalloc(SECTOR_SIZE * 2);
 
 	enum hal_drive_res err =
-	    dev->transfer(partition, 2, 2, (uint16_t *)superblock, DRV_READ);
+	    partition->dev->transfer(partition, 2, 2, superblock, DRV_READ);
 	if (err) {
 		return err;
 	}
@@ -385,15 +403,17 @@ enum hal_drive_res detect_ext2(struct hal_drive *dev,
 	}
 
 	// TODO: Handle required feature flags
+	log(LOG_INFO, LOG_EXT2, "Required feature flags: %x.\n",
+	    superblock->feats_required);
 
 	struct ext2_inode root;
-	get_inode(superblock, dev, partition, 2, &root);
+	inode_transfer(superblock, partition, 2, &root, DRV_READ);
 
 	struct vfs_inode inode;
 	struct ext2_vfs_payload *payload =
 	    kmalloc(sizeof(struct ext2_vfs_payload));
 	payload->inode       = root;
-	payload->dev         = dev;
+	payload->dev         = partition->dev;
 	payload->partition   = partition;
 	payload->superblock  = superblock;
 	payload->group       = 0;

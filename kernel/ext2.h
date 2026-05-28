@@ -96,6 +96,7 @@ struct ext2_directory_entry {
 };
 
 struct ext2_vfs_payload {
+	uint32_t inode_id;
 	uint32_t group;
 	struct ext2_inode inode;
 	struct hal_drive *dev;
@@ -103,7 +104,6 @@ struct ext2_vfs_payload {
 	struct ext2_superblock *superblock;
 };
 
-enum hal_drive_res detect_ext2(struct hal_drive *dev,
-                               struct partition *partition);
+enum hal_drive_res detect_ext2(struct partition *partition);
 
 #endif

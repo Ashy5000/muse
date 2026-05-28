@@ -1,9 +1,16 @@
-; Read a DH sector long kernel.
+addr_packet:
+	db 0x10
+	db 0x00
+	dw 57
+	dw KERNEL_OFFSET
+	dw 0
+	dd 2048
+	dd 0
+
+; Read a 50 sector long kernel. Done in 2 reads.
 read_kernel:
-	mov ah, 0x02 ; BIOS read sector function
-	mov al, dh ; Read DH sectors
-	mov ch, 0x02 ; Cylinder 2
-	mov dh, 0x00 ; Head 0
-	mov cl, 0x21 ; Sector 33
-	int 0x13 ; Trigger BIOS interrupt
+	mov si, addr_packet
+	mov ah, 0x42
+	mov dl, [BOOT_DRIVE]
+	int 0x13
 	ret

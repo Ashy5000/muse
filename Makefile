@@ -28,7 +28,7 @@ RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SO
 LIBC_PATH = $(LIB_DIR)/libc.a
 
 define compile-c =
-$(CC) $(CFLAGS) -ffreestanding -c $< -o $@ -O1 -g
+$(CC) $(CFLAGS) -ffreestanding -c $< -o $@ -O0 -g
 endef
 
 define assemble =
@@ -51,7 +51,7 @@ $(LIB_DIR)/%.o: $(RUNTIME_SRC)/%.asm
 	$(assemble)
 
 $(BUILD_DIR)/kernel.bin: kernel_entry.o $(KERNEL_OBJS) $(DRIVER_OBJS)
-	$(LD) -o $@ -Ttext 0x1000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary --entry main -g
+	$(LD) -o $@ -Ttext 0x8000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary --entry main -g
 
 $(LIBC_PATH): $(LIBC_OBJS)
 	$(AR) rcs $@ $^

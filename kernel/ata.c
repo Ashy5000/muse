@@ -43,7 +43,7 @@ bool detect_float(uint16_t bus) { return inb(bus + ATA_REG_STAT) == 0xFF; }
 
 __attribute__((warn_unused_result)) enum hal_drive_res
 poll_data(struct ata_dev *dev) {
-	uint32_t polls = 0;
+	uint64_t polls = 0;
 	for (;;) {
 		polls++;
 		if (polls >= MAX_POLLS) {
@@ -70,7 +70,7 @@ void delay_400ns(struct ata_dev *dev) {
 
 __attribute__((warn_unused_result)) enum hal_drive_res
 select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_count) {
-	uint32_t polls = 0;
+	uint64_t polls = 0;
 	while (inb(dev->bus + ATA_REG_STAT) & (ATA_FLAG_BSY | ATA_FLAG_DRQ)) {
 		polls++;
 		if (polls >= MAX_POLLS) {
@@ -93,7 +93,7 @@ select_region(struct ata_dev *dev, uint32_t lba, uint8_t sector_count) {
 __attribute__((warn_unused_result)) enum hal_drive_res
 flush_cache(struct ata_dev *dev) {
 	outb(dev->bus + ATA_REG_CMD, ATA_CMD_FLUSH);
-	uint32_t polls = 0;
+	uint64_t polls = 0;
 	while (inb(dev->bus + ATA_REG_STAT) & ATA_FLAG_BSY) {
 		polls++;
 		if (polls >= MAX_POLLS) {
@@ -172,7 +172,7 @@ void detect_drive(uint16_t bus, uint8_t drive) {
 	if (inb(bus + ATA_REG_STAT) == 0) {
 		return;
 	}
-	uint32_t polls = 0;
+	uint64_t polls = 0;
 	while ((inb(bus + ATA_REG_STAT) & ATA_FLAG_BSY) > 0) {
 		polls++;
 		if (polls > MAX_POLLS) {

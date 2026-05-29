@@ -28,7 +28,7 @@ RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SO
 LIBC_PATH = $(LIB_DIR)/libc.a
 
 define compile-c =
-$(CC) $(CFLAGS) -ffreestanding -c $< -o $@ -O0 -g
+$(CC) $(CFLAGS) -ffreestanding -c $< -o $@ -O1
 endef
 
 define assemble =
@@ -72,7 +72,6 @@ disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin $(INCLUDE_DIR) $(LI
 	sudo losetup /dev/loop0 disk.bin -o 2097152
 	sudo sh -c "yes | mke2fs /dev/loop0 63453k"
 	sudo mount /dev/loop0 /mnt
-	sudo rm -rf /mnt/lost+found
 	sudo cp -r fs/* /mnt/
 	sync
 

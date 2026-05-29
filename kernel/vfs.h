@@ -1,14 +1,15 @@
 #ifndef VFS_H
 #define VFS_H
 
+#include "hal.h"
 #include <stdbool.h>
 #include <stdint.h>
 
 struct vfs_inode;
 struct vfs_tnode;
 
-typedef uint32_t (*fn_file_io_t)(struct vfs_inode *, uint32_t, uint32_t,
-                                 void *);
+typedef uint32_t (*fn_file_io_t)(struct vfs_inode *, uint32_t, uint32_t, void *,
+                                 enum hal_drive_dir);
 typedef void (*fn_truncate_t)(struct vfs_inode *);
 typedef void (*fn_register_inode_t)(struct vfs_inode *, struct vfs_tnode *);
 typedef struct vfs_inode *(*fn_create_child_t)(struct vfs_inode *, char *);
@@ -21,8 +22,7 @@ struct vfs_inode {
 
 	void *backend_data;
 
-	fn_file_io_t read;
-	fn_file_io_t write;
+	fn_file_io_t transfer;
 	fn_truncate_t truncate;
 	fn_create_child_t create_child_file;
 

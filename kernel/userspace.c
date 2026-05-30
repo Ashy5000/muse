@@ -46,3 +46,13 @@ char *clean_string(unsafe_ptr str_a) {
 		}
 	}
 }
+
+void *clean_data(unsafe_ptr data, size_t size) {
+	for (uint32_t pg = ALIGN_PG_DOWN(data); pg < ALIGN_PG_UP(data + size);
+	     pg += PAGE_SIZE) {
+		if (!check_user(pg)) {
+			return 0;
+		}
+	}
+	return data;
+}

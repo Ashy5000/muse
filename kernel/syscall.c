@@ -1,5 +1,4 @@
 #include "syscall.h"
-#include "alloc.h"
 #include "context.h"
 #include "logging.h"
 #include "paging.h"
@@ -66,7 +65,7 @@ uint32_t syscall_open(uint32_t *args) {
 	struct vfs_inode *inode = vfs_open(path);
 	if (!inode) {
 		// TODO: If MODE_CREATE is set, create a file.
-		return -2;
+		return -1;
 	}
 	for (unsigned int i = 0; i < FOPEN_MAX; i++) {
 		if (active_ctx->files[i].mode == 0) {
@@ -80,14 +79,44 @@ uint32_t syscall_open(uint32_t *args) {
 			if (mode & MODE_TRUNCATE) {
 				inode->truncate(inode);
 			}
+			log(LOG_DEBUG, LOG_SYSCALL,
+			    "open() finished successfully.\n");
 			return i;
 		}
 	}
-	return -3;
+	return -1;
+}
+
+/* IMPORTANT: transfer() uses the sign of the file descriptor to indicate
+ * read/write mode. Positive = read, negative = write. This saves a register,
+ * and puts the extra unused bits of the FD (which is always -15 <= 15) to use.
+ */
+uint32_t syscall_transfer(uint32_t *args) {
+	int fd                 = args[0];
+	enum hal_drive_dir dir = DRV_READ;
+	if (fd < 0) {
+		dir = DRV_WRITE;
+		fd  = -fd;
+	}
+	if (fd >= FOPEN_MAX) {
+		return -1;
+	}
+	size_t size = args[1]; /* TODO: Verify this better. */
+	void *data  = clean_data((unsafe_ptr)(vaddr_t)args[2], size);
+	if (!data) {
+		return -1;
+	}
+
+	struct file *f = &active_ctx->files[fd];
+	uint32_t bytes_transferred =
+	    f->inode->transfer(f->inode, f->pos, size, data, dir);
+	f->pos += bytes_transferred;
+	return bytes_transferred;
 }
 
 void init_syscalls() {
 	syscalls[0] = syscall_exit;
 	syscalls[1] = syscall_sbrk;
 	syscalls[2] = syscall_open;
+	syscalls[3] = syscall_transfer;
 }

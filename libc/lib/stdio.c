@@ -31,5 +31,17 @@ FILE *fopen(const char *restrict filename, const char *restrict mode_str) {
 	}
 	FILE *f = malloc(sizeof(*f));
 	f->fd   = fd;
+	f->pos  = 0; /* TODO: Request this information from the kernel. */
 	return f;
+}
+
+/* TODO: Implement locks on all file I/O operations. */
+
+int getc(FILE *stream) {
+	unsigned char c;
+	uint32_t chars_read = muse_syscall(3, stream->fd, 1, (uintptr_t)&c);
+	if (chars_read) {
+		return c;
+	}
+	return EOF;
 }

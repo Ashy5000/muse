@@ -10,7 +10,7 @@ struct block_header {
 	mem_t size;
 	uint8_t free; // Bit 0: free if set. Bit 1: last header if set.
 #ifdef ALLOC_CANARY
-	char canary[4];
+	unsigned char canary[4];
 #endif
 };
 

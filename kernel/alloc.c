@@ -24,20 +24,27 @@ void fuse_blocks(struct block_header *header) {
 	header->free = 1;
 }
 
+#ifdef ALLOC_CANARY
+#define CHECK_CANARY(H)                                                        \
+	for (uint32_t i = 0; i < 4; i++) {                                     \
+		if ((H)->canary[i] != "MUSE"[i]) {                             \
+			log(LOG_ERROR, LOG_ALLOC,                              \
+			    "Heap canary was overwritten! Block at "           \
+			    "%x.\n",                                           \
+			    (uintptr_t)(H) + sizeof(struct block_header));     \
+			__asm__ volatile("cli; hlt");                          \
+		}                                                              \
+	}
+#else
+#define CHECK_CANARY(H)
+#endif
+
 void *kmalloc(vaddr_t size) {
 	void *block = active_ctx->heap;
 	struct block_header *header;
 	while (1) {
 		header = block;
-#ifdef ALLOC_CANARY
-		for (uint32_t i = 0; i < 4; i++) {
-			if (header->canary[i] != "MUSE"[i]) {
-				log(LOG_ERROR, LOG_ALLOC,
-				    "Heap canary was overwritten!\n");
-				__asm__ volatile("cli; hlt");
-			}
-		}
-#endif
+		CHECK_CANARY(header);
 		if ((header->free & 1) == 0) {
 			if ((header->free & 2) > 0) {
 				break;
@@ -94,6 +101,7 @@ void *kmalloc(vaddr_t size) {
 void *kmalloc_aligned() {
 	struct block_header *header = active_ctx->heap;
 	while (1) {
+		CHECK_CANARY(header);
 		if ((header->free & 1) == 0) {
 			if ((header->free & 2) > 0) {
 				break;
@@ -125,6 +133,9 @@ void *kmalloc_aligned() {
 			}
 			struct block_header *page_header =
 			    (struct block_header *)(uintptr_t)header_start;
+#ifdef ALLOC_CANARY
+			memcpy(page_header->canary, "MUSE", 4);
+#endif
 			page_header->free = 0;
 			if ((header->free & 2) > 0) {
 				page_header->free = 2;
@@ -143,6 +154,9 @@ void *kmalloc_aligned() {
 					map_page(excess_page,
 					         (uintptr_t)kpage_alloc());
 				}
+#ifdef ALLOC_CANARY
+				memcpy(excess_header->canary, "MUSE", 4);
+#endif
 				excess_header->size = (uintptr_t)header +
 				                      header->size -
 				                      (uintptr_t)excess_header;

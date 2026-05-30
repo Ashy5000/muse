@@ -9,7 +9,7 @@ CC = $(CROSS_ROOT)/i686-muse-gcc
 AS = $(CROSS_ROOT)/i686-muse-as
 LD = $(CROSS_ROOT)/i686-muse-ld
 AR = $(CROSS_ROOT)/i686-muse-ar
-CFLAGS = -Wall -Werror -Wextra
+CFLAGS = -Wall -Werror -Wextra -O1
 SRC_DIRS = $(KERNEL_SRC) $(DRIVER_SRC) $(LIBC_SRC)
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
 DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
@@ -28,7 +28,11 @@ RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SO
 LIBC_PATH = $(LIB_DIR)/libc.a
 
 define compile-c =
-$(CC) $(CFLAGS) -ffreestanding -c $< -o $@ -O1
+$(CC) $(CFLAGS) -ffreestanding -c $< -o $@
+endef
+
+define compile-usr-c =
+$(CC) $(CFLAGS) -c $< -o $@
 endef
 
 define assemble =
@@ -37,6 +41,9 @@ endef
 
 $(BUILD_DIR)/boot_sect.bin: bootloader/
 	cd bootloader; nasm boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
+
+$(BUILD_DIR)/$(LIBC_SRC)/%.o: $(LIBC_SRC)/%.c
+	$(compile-usr-c)
 
 $(BUILD_DIR)/%.o: %.c
 	$(compile-c)
@@ -51,7 +58,7 @@ $(LIB_DIR)/%.o: $(RUNTIME_SRC)/%.asm
 	$(assemble)
 
 $(BUILD_DIR)/kernel.bin: kernel_entry.o $(KERNEL_OBJS) $(DRIVER_OBJS)
-	$(LD) -o $@ -Ttext 0x8000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary --entry main -g
+	$(LD) -o $@ -Ttext 0x8000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary
 
 $(LIBC_PATH): $(LIBC_OBJS)
 	$(AR) rcs $@ $^

@@ -367,7 +367,12 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
                        void *data, enum hal_drive_dir dir) {
 	struct ext2_vfs_payload *payload = inode->backend_data;
 	uint32_t block_size = 1024 << payload->superblock->block_size_log;
-	void *bfr           = kmalloc(block_size);
+
+	if (offset + len > payload->inode.size_lo) {
+		len = payload->inode.size_lo - offset;
+	}
+
+	void *bfr = kmalloc(block_size);
 	uint32_t block =
 	    offset /
 	    block_size; /* The index of the block we are currently reading. */

@@ -4,7 +4,7 @@
 
 struct vfs_mount_point *first_mount_point = 0;
 
-void mount(struct vfs_inode inode, char *path) {
+struct vfs_mount_point *mount(struct vfs_inode inode, char *path) {
 	struct vfs_mount_point *mount_point =
 	    kmalloc(sizeof(struct vfs_mount_point));
 	mount_point->inode = inode;
@@ -14,6 +14,7 @@ void mount(struct vfs_inode inode, char *path) {
 		mount_point->next = first_mount_point;
 	}
 	first_mount_point = mount_point;
+	return mount_point;
 }
 
 struct vfs_inode *vfs_open(char *path) {

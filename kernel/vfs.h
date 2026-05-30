@@ -57,7 +57,7 @@ struct file {
 	uint8_t mode;
 };
 
-void mount(struct vfs_inode inode, char *path);
+struct vfs_mount_point *mount(struct vfs_inode inode, char *path);
 struct vfs_inode *vfs_open(char *path);
 
 #endif

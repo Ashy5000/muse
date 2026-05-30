@@ -114,9 +114,35 @@ uint32_t syscall_transfer(uint32_t *args) {
 	return bytes_transferred;
 }
 
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
+/* IMPORTANT: Unlike the C standard library function fseek(), the seek() syscall
+ * returns the new offset into the file following the seek. */
+uint32_t syscall_seek(uint32_t *args) {
+	int fd         = args[0];
+	int32_t offset = args[1];
+	int whence     = args[2];
+	switch (whence) {
+	case SEEK_SET:
+		active_ctx->files[fd].pos = offset;
+		break;
+	case SEEK_CUR:
+		active_ctx->files[fd].pos += offset;
+		break;
+	case SEEK_END:
+		active_ctx->files[fd].pos =
+		    active_ctx->files[fd].inode->size - 1 + offset;
+		break;
+	}
+	return active_ctx->files[fd].pos;
+}
+
 void init_syscalls() {
 	syscalls[0] = syscall_exit;
 	syscalls[1] = syscall_sbrk;
 	syscalls[2] = syscall_open;
 	syscalls[3] = syscall_transfer;
+	syscalls[4] = syscall_seek;
 }

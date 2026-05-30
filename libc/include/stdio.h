@@ -23,29 +23,40 @@ typedef unsigned int fpos_t;
 typedef struct {
 	int fd;
 	fpos_t pos;
-	char *bfr;
+	unsigned char *bfr;
 	size_t bfr_size;
+	size_t bfr_cap;
 } FILE;
 
+extern FILE *stdin;
+extern FILE *stdout;
 extern FILE *stderr;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#define stdin  stdin
+#define stdout stdout
 #define stderr stderr
+FILE *fopen(const char *filename, const char *modestring);
 int fclose(FILE *);
-int fflush(FILE *);
-FILE *fopen(const char *, const char *);
-int getc(FILE *);
-int fprintf(FILE *, const char *, ...);
+
+#define getc fgetc
+int fgetc(FILE *);
 size_t fread(void *, size_t, size_t, FILE *);
-int fseek(FILE *, long, int);
-long ftell(FILE *);
+
+#define putc fputc
+int fputc(int, FILE *);
 size_t fwrite(const void *, size_t, size_t, FILE *);
-void setbuf(FILE *, char *);
+int fprintf(FILE *, const char *, ...);
 int vfprintf(FILE *, const char *, va_list);
 int sprintf(char *, const char *, ...);
+int fflush(FILE *);
+
+int fseek(FILE *, long, int);
+long ftell(FILE *);
+void setbuf(FILE *, char *);
 int feof(FILE *);
 
 #ifdef __cplusplus

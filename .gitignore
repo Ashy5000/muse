@@ -1,5 +1,6 @@
 *.o
 *.bin
+*.d
 fs/
 build/
 bx_enh_dbg.ini

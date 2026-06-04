@@ -62,6 +62,7 @@ uint32_t syscall_open(uint32_t *args) {
 		return -1;
 	}
 
+	/* TODO: Reference count inode */
 	struct vfs_inode *inode = vfs_open(path);
 	if (!inode) {
 		// TODO: If MODE_CREATE is set, create a file.
@@ -107,6 +108,9 @@ uint32_t syscall_transfer(uint32_t *args) {
 		return -1;
 	}
 
+	log(LOG_DEBUG, LOG_SYSCALL, "Transferring %x bytes with transfer().\n",
+	    size);
+
 	struct file *f = &active_ctx->files[fd];
 	uint32_t bytes_transferred =
 	    f->inode->transfer(f->inode, f->pos, size, data, dir);
@@ -139,10 +143,20 @@ uint32_t syscall_seek(uint32_t *args) {
 	return active_ctx->files[fd].pos;
 }
 
+uint32_t syscall_close(uint32_t *args) {
+	/* TODO: Reference count inode */
+	int fd                      = args[0];
+	active_ctx->files[fd].mode  = 0;
+	active_ctx->files[fd].pos   = 0;
+	active_ctx->files[fd].inode = 0;
+	return 0;
+}
+
 void init_syscalls() {
 	syscalls[0] = syscall_exit;
 	syscalls[1] = syscall_sbrk;
 	syscalls[2] = syscall_open;
 	syscalls[3] = syscall_transfer;
 	syscalls[4] = syscall_seek;
+	syscalls[5] = syscall_close;
 }

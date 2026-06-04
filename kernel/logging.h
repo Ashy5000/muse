@@ -15,6 +15,7 @@ enum log_class {
 	LOG_ALLOC,
 	LOG_APIC,
 	LOG_EXCEPTION,
+	LOG_EXT2,
 	LOG_KERNEL,
 	LOG_GPT,
 	LOG_MEM,
@@ -23,7 +24,7 @@ enum log_class {
 	LOG_PIC,
 	LOG_HPET,
 	LOG_SYSCALL,
-	LOG_EXT2,
+	LOG_TERM,
 };
 
 /* This macro should be used to signal an impossible branch of execution. */

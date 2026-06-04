@@ -26,6 +26,7 @@ typedef struct {
 	unsigned char *bfr;
 	size_t bfr_size;
 	size_t bfr_cap;
+	bool line_buffered;
 } FILE;
 
 extern FILE *stdin;
@@ -42,17 +43,20 @@ extern "C" {
 FILE *fopen(const char *filename, const char *modestring);
 int fclose(FILE *);
 
+int fflush(FILE *);
+
 #define getc fgetc
 int fgetc(FILE *);
 size_t fread(void *, size_t, size_t, FILE *);
 
 #define putc fputc
 int fputc(int, FILE *);
-size_t fwrite(const void *, size_t, size_t, FILE *);
+int fputs(const char *, FILE *);
+size_t fwrite(const void *restrict ptr, size_t size, size_t nmemb,
+              FILE *restrict stream);
 int fprintf(FILE *, const char *, ...);
 int vfprintf(FILE *, const char *, va_list);
 int sprintf(char *, const char *, ...);
-int fflush(FILE *);
 
 int fseek(FILE *, long, int);
 long ftell(FILE *);

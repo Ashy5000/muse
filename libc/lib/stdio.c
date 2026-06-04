@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 FILE *stdin;
 FILE *stdout;
@@ -13,13 +14,13 @@ FILE *stderr;
 #define MODE_TRUNCATE 8
 #define MODE_CREATE   16
 
-unsigned long int syscall_transfer(FILE *f, long int size, unsigned char *res,
-                                   bool write) {
-	int fd = f->fd;
-	if (write) {
-		fd = -fd;
-	}
-	return muse_syscall(3, fd, size, (uintptr_t)res);
+unsigned long int syscall_read(FILE *f, long int size, unsigned char *res) {
+	return muse_syscall(3, f->fd, size, (uintptr_t)res);
+}
+
+unsigned long int syscall_write(FILE *f, long int size,
+                                const unsigned char *res) {
+	return muse_syscall(3, -f->fd, size, (uintptr_t)res);
 }
 
 fpos_t syscall_seek(FILE *f, long int offset, int whence) {
@@ -50,29 +51,18 @@ FILE *fopen(const char *restrict filename, const char *restrict mode_str) {
 	FILE *f = malloc(sizeof(*f));
 	f->fd   = fd;
 	f->pos  = syscall_seek(f, 0, SEEK_CUR); /* Syscall returns new offset */
-	f->bfr_size = 0;
-	f->bfr_cap  = BUFSIZ;
-	f->bfr      = malloc(f->bfr_size);
+	f->bfr_size      = 0;
+	f->bfr_cap       = BUFSIZ;
+	f->bfr           = malloc(f->bfr_size);
+	f->line_buffered = false;
 	return f;
 }
 
 /* TODO: Implement locks on all file I/O operations. */
 
-int fgetc(FILE *stream) {
-	/* TODO: Flush the buffer. */
-	unsigned char c;
-
-	unsigned long int chars_read = syscall_transfer(stream, 1, &c, false);
-	stream->pos += chars_read;
-	if (chars_read == 1) {
-		return c;
-	}
-	return EOF;
-}
-
 int fflush(FILE *stream) {
 	unsigned long int chars_written =
-	    syscall_transfer(stream, stream->bfr_size, stream->bfr, true);
+	    syscall_write(stream, stream->bfr_size, stream->bfr);
 	stream->pos += chars_written;
 	if (chars_written == stream->bfr_size) {
 		stream->bfr_size = 0;
@@ -81,27 +71,106 @@ int fflush(FILE *stream) {
 	return EOF;
 }
 
+int fclose(FILE *stream) {
+	int res = 0;
+	if (fflush(stream) == EOF) {
+		res = EOF;
+	}
+	if (stream->bfr) {
+		free(stream->bfr);
+	}
+	if ((int)muse_syscall(5, stream->fd, 0, 0) < 0) {
+		return EOF;
+	}
+	return res;
+}
+
+int fgetc(FILE *stream) {
+	fflush(stream);
+
+	unsigned char c;
+	unsigned long int chars_read = syscall_read(stream, 1, &c);
+	stream->pos += chars_read;
+	if (chars_read == 1) {
+		return c;
+	}
+	return EOF;
+}
+
 int fputc(int c, FILE *stream) {
 	if (!stream->bfr) {
 		unsigned long int chars_written =
-		    syscall_transfer(stream, 1, (unsigned char *)&c, true);
+		    syscall_write(stream, 1, (unsigned char *)&c);
 		stream->pos += chars_written;
 		if (chars_written == 1) {
-			return 0;
+			return c;
 		}
 		return EOF;
 	}
 	stream->bfr[stream->bfr_size++] = c;
-	if (stream->bfr_size == stream->bfr_cap) {
+	if (stream->bfr_size == stream->bfr_cap ||
+	    (stream->line_buffered && c == '\n')) {
 		return fflush(stream);
 	}
-	return 0;
+	return c;
+}
+
+size_t fwrite(const void *restrict ptr, size_t size, size_t nmemb,
+              FILE *restrict stream) {
+	if (!stream->bfr) {
+		/* If the stream isn't buffered, minimize syscalls by only
+		 * writing once. */
+		unsigned long int chars_written = syscall_write(
+		    stream, size * nmemb, (const unsigned char *)ptr);
+		stream->pos += chars_written;
+		return chars_written / size;
+	}
+	size_t i = 0;
+	for (; i < size * nmemb; i++) {
+		if (fputc(((char *)ptr)[i], stream) == EOF) {
+			break;
+		}
+	}
+	return (i + 1) / size;
+}
+
+int fputs(const char *restrict s, FILE *restrict stream) {
+	return fwrite((const void *)s, sizeof(char), strlen(s), stream);
+}
+
+size_t fread(void *restrict ptr, size_t size, size_t nmemb,
+             FILE *restrict stream) {
+	fflush(stream);
+	unsigned long int chars_read =
+	    syscall_read(stream, size * nmemb, (unsigned char *)ptr);
+	stream->pos += chars_read;
+	return chars_read / size;
 }
 
 void init_io() {
-	stderr           = malloc(sizeof(*stderr));
-	stderr->fd       = 2;
-	stderr->bfr_size = 0;
-	stderr->bfr_cap  = 0;
-	stderr->bfr      = 0;
+	stdin                 = malloc(sizeof(*stdin));
+	stdin->fd             = 0;
+	stdin->bfr_size       = 0;
+	stdin->bfr_cap        = 0;
+	stdin->bfr            = 0;
+	stdin->line_buffered  = true;
+	stdout                = malloc(sizeof(*stdout));
+	stdout->fd            = 1;
+	stdout->bfr_size      = 0;
+	stdout->bfr_cap       = BUFSIZ;
+	stdout->bfr           = malloc(stdout->bfr_cap);
+	stdout->line_buffered = true;
+	stderr                = malloc(sizeof(*stderr));
+	stderr->fd            = 2;
+	stderr->bfr_size      = 0;
+	stderr->bfr_cap       = 0;
+	stderr->bfr           = 0;
+	stderr->line_buffered = false;
+}
+
+void uninit_io() {
+	free(stdin);
+	free(stdout->bfr);
+	free(stdout);
+	free(stderr);
 }

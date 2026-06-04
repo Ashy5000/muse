@@ -19,8 +19,7 @@
 
 void vlog(enum log_level level, enum log_class lclass, const char *fmt,
           va_list args) {
-	DEF_LOG_LEVELS(DEF_LOG_LEVEL(LOG_SYSCALL, LOG_DEBUG)
-	                   DEF_LOG_LEVEL(LOG_EXT2, LOG_DEBUG));
+	DEF_LOG_LEVELS();
 
 	switch (level) {
 	case LOG_DEBUG:
@@ -51,6 +50,9 @@ void vlog(enum log_level level, enum log_class lclass, const char *fmt,
 	case LOG_EXCEPTION:
 		kprintf("exception: ");
 		break;
+	case LOG_EXT2:
+		kprintf("ext2: ");
+		break;
 	case LOG_KERNEL:
 		kprintf("kernel: ");
 		break;
@@ -75,8 +77,8 @@ void vlog(enum log_level level, enum log_class lclass, const char *fmt,
 	case LOG_SYSCALL:
 		kprintf("syscall: ");
 		break;
-	case LOG_EXT2:
-		kprintf("ext2: ");
+	case LOG_TERM:
+		kprintf("term: ");
 		break;
 	default:
 		kprintf("???: ");

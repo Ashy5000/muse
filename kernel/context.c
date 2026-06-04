@@ -2,7 +2,6 @@
 #include "../drivers/hpet.h"
 #include "alloc.h"
 #include "apic.h"
-#include "term.h"
 
 struct context *active_ctx = 0;
 struct context *next_ctx   = 0;
@@ -15,7 +14,9 @@ extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 extern uint32_t tick_period;
 
 void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
-                    struct scroll *first_scr, vaddr_t limit) {
+                    struct scroll *first_scr, vaddr_t limit,
+                    struct vfs_inode *stdin, struct vfs_inode *stdout,
+                    struct vfs_inode *stderr) {
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
 	ctx_new->priority       = priority;
@@ -31,21 +32,18 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
 	for (unsigned int i = 0; i < FOPEN_MAX; i++) {
 		ctx_new->files[i].mode = 0;
 	}
-	struct vfs_inode *term_inode =
-	    create_term(); /* TODO: Pass terminal device as an argument to
-	                      create_context(). */
 	/* Stdin */
-	ctx_new->files[0].mode  = MODE_WRITE;
+	ctx_new->files[0].mode  = MODE_READ;
 	ctx_new->files[0].pos   = 0;
-	ctx_new->files[0].inode = term_inode;
+	ctx_new->files[0].inode = stdin;
 	/* Stdout */
-	ctx_new->files[1].mode  = MODE_READ;
+	ctx_new->files[1].mode  = MODE_WRITE;
 	ctx_new->files[1].pos   = 0;
-	ctx_new->files[1].inode = term_inode;
+	ctx_new->files[1].inode = stdout;
 	/* Stderr */
-	ctx_new->files[2].mode  = MODE_READ;
+	ctx_new->files[2].mode  = MODE_WRITE;
 	ctx_new->files[2].pos   = 0;
-	ctx_new->files[2].inode = term_inode;
+	ctx_new->files[2].inode = stderr;
 	if (next_ctx == 0) {
 		next_ctx = ctx_new;
 		last_ctx = ctx_new;

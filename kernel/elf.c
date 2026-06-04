@@ -7,7 +7,8 @@
 
 #define PT_LOAD 1
 
-void load_elf(char *path, uint32_t argc, char **argv) {
+void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
+              struct vfs_inode *stdout, struct vfs_inode *stderr) {
 	struct vfs_inode *file = vfs_open(path);
 	if (!file) {
 		return;
@@ -61,7 +62,8 @@ void load_elf(char *path, uint32_t argc, char **argv) {
 	lock_scheduler();
 	load_user_call_info((func_ptr_t)(uintptr_t)header->entry_point, argc,
 	                    argv);
-	create_context(enter_ring3, 1, true, first_scr, limit);
+	create_context(enter_ring3, 1, true, first_scr, limit, stdin, stdout,
+	               stderr);
 	uint8_t *data = kmalloc_aligned();
 	current_scr   = first_scr;
 	for (uint32_t offset = header->program_table_offset;

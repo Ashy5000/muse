@@ -3,69 +3,68 @@ KERNEL_SRC = kernel
 DRIVER_SRC = drivers
 LIBC_SRC = libc/lib
 RUNTIME_SRC = libc/runtime
+LIB_DIR = fs/usr/lib
 LIBC_INCLUDE = libc/include
+INCLUDE_DIR = fs/usr/include
+LIBC_PATH = $(LIB_DIR)/libc.a
+SRC_DIRS = $(KERNEL_SRC) $(DRIVER_SRC) $(LIBC_SRC)
+
 CROSS_ROOT = $(HOME)/opt/cross/bin
 CC = $(CROSS_ROOT)/i686-muse-gcc
 AS = $(CROSS_ROOT)/i686-muse-as
 LD = $(CROSS_ROOT)/i686-muse-ld
 AR = $(CROSS_ROOT)/i686-muse-ar
 CFLAGS = -Wall -Werror -Wextra -O1
-SRC_DIRS = $(KERNEL_SRC) $(DRIVER_SRC) $(LIBC_SRC)
+
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
 DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
+LIBC_C_SOURCES = $(wildcard $(LIBC_SRC)/*.c)
+ALL_SRC = $(KERNEL_C_SOURCES) $(DRIVER_C_SOURCES) $(KERNEL_ASM_SOURCES) $(DRIVER_ASM_SOURCES) $(LIBC_C_SOURCES) $(LIBC_ASM_SOURCES) $(RUNTIME_ASM_SOURCES)
+
 KERNEL_ASM_SOURCES = $(wildcard $(KERNEL_SRC)/*.asm)
 DRIVER_ASM_SOURCES = $(wildcard $(DRIVER_SRC)/*.asm)
-LIBC_C_SOURCES = $(wildcard $(LIBC_SRC)/*.c)
 LIBC_ASM_SOURCES = $(wildcard $(LIBC_SRC)/*.asm)
 RUNTIME_ASM_SOURCES = $(wildcard $(RUNTIME_SRC)/*.asm)
-ALL_SRC = $(KERNEL_C_SOURCES) $(DRIVER_C_SOURCES) $(KERNEL_ASM_SOURCES) $(DRIVER_ASM_SOURCES) $(LIBC_C_SOURCES) $(LIBC_ASM_SOURCES) $(RUNTIME_ASM_SOURCES)
+
+KERNEL_DEPS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.d, $(KERNEL_C_SOURCES))
+DRIVER_DEPS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.d, $(DRIVER_C_SOURCES))
+LIBC_DEPS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.dm, $(LIBC_C_SOURCES))
+ALL_DEPS = $(KERNEL_DEPS) $(DRIVER_DEPS) $(LIBC_DEPS)
+
 KERNEL_OBJS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_C_SOURCES)) $(patsubst $(KERNEL_SRC)/%.asm, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_ASM_SOURCES))
 DRIVER_OBJS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_C_SOURCES)) $(patsubst $(DRIVER_SRC)/%.asm, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_ASM_SOURCES))
 LIBC_OBJS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_C_SOURCES)) $(patsubst $(LIBC_SRC)/%.asm, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_ASM_SOURCES))
-LIB_DIR = fs/usr/lib
-INCLUDE_DIR = fs/usr/include
 RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SOURCES))
-LIBC_PATH = $(LIB_DIR)/libc.a
 
 define compile-c =
-$(CC) $(CFLAGS) -ffreestanding -c $< -o $@
+$(CC) $(CFLAGS) -ffreestanding -MMD -MP -c $< -o $@
 endef
 
 define compile-usr-c =
-$(CC) $(CFLAGS) -c $< -o $@
+$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 endef
 
 define assemble =
 $(AS) $< -o $@ -g
 endef
 
-$(BUILD_DIR)/boot_sect.bin: bootloader/
-	cd bootloader; nasm boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
+all: build
 
-$(BUILD_DIR)/$(LIBC_SRC)/%.o: $(LIBC_SRC)/%.c
-	$(compile-usr-c)
+.PHONY: all libc build run debug clean todo
 
-$(BUILD_DIR)/%.o: %.c
-	$(compile-c)
+build: disk.bin
 
-kernel_entry.o: kernel_entry.c
-	$(compile-c)
+run: build
+	qemu-system-i386 -drive format=raw,file=disk.bin -no-reboot -no-shutdown -gdb tcp::9000
 
-$(BUILD_DIR)/%.o: %.asm
-	$(assemble)
+debug: build
+	bochs -dbg
 
-$(LIB_DIR)/%.o: $(RUNTIME_SRC)/%.asm
-	$(assemble)
+clean:
+	rm $(BUILD_DIR)/*.o
 
-$(BUILD_DIR)/kernel.bin: kernel_entry.o $(KERNEL_OBJS) $(DRIVER_OBJS)
-	$(LD) -o $@ -Ttext 0x8000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary
-
-$(LIBC_PATH): $(LIBC_OBJS)
-	$(AR) rcs $@ $^
-
-$(INCLUDE_DIR): $(LIBC_INCLUDE)
-	rm -rf $(INCLUDE_DIR)/*
-	cp -r $(LIBC_INCLUDE) $(INCLUDE_DIR)/..
+todo:
+	-@for file in $(ALL_SRC:Makefile=); do grep -F -H -e TODO -e FIXME $$file; done; true
 
 disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin $(INCLUDE_DIR) $(LIBC_PATH) $(RUNTIME_OBJS)
 	dd if=/dev/zero of=disk.bin bs=512 count=131072
@@ -82,20 +81,34 @@ disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin $(INCLUDE_DIR) $(LI
 	sudo cp -r fs/* /mnt/
 	sync
 
+-include $(ALL_DEPS)
+
+$(INCLUDE_DIR): $(LIBC_INCLUDE)
+	rm -rf $(INCLUDE_DIR)/*
+	cp -r $(LIBC_INCLUDE) $(INCLUDE_DIR)/..
+
+$(LIBC_PATH): $(LIBC_OBJS) 
+	$(AR) rcs $@ $^
+
+$(BUILD_DIR)/boot_sect.bin: bootloader/
+	cd bootloader; nasm boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
+
+$(BUILD_DIR)/$(LIBC_SRC)/%.o: $(LIBC_SRC)/%.c Makefile
+	$(compile-usr-c)
+
+$(BUILD_DIR)/%.o: %.c Makefile
+	$(compile-c)
+
+kernel_entry.o: kernel_entry.c Makefile
+	$(compile-c)
+
+$(BUILD_DIR)/%.o: %.asm
+	$(assemble)
+
+$(LIB_DIR)/%.o: $(RUNTIME_SRC)/%.asm
+	$(assemble)
+
+$(BUILD_DIR)/kernel.bin: kernel_entry.o $(KERNEL_OBJS) $(DRIVER_OBJS)
+	$(LD) -o $@ -Ttext 0x8000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary
+
 libc: $(LIBC_PATH)
-
-build: disk.bin
-
-run: build
-	qemu-system-i386 -drive format=raw,file=disk.bin -no-reboot -no-shutdown -gdb tcp::9000
-
-debug: build
-	bochs -dbg
-
-clean:
-	rm $(BUILD_DIR)/*.o
-
-todo:
-	-@for file in $(ALL_SRC:Makefile=); do grep -F -H -e TODO -e FIXME $$file; done; true
-
-.PHONY: libc build run debug clean todo

@@ -2,6 +2,7 @@
 #define ELF_H
 
 #include "hal.h"
+#include "vfs.h"
 #include <stdint.h>
 
 struct elf_header {
@@ -37,6 +38,7 @@ struct elf_program_header {
 	uint32_t alignment;
 };
 
-void load_elf(char *path, uint32_t argc, char **argv);
+void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
+              struct vfs_inode *stdout, struct vfs_inode *stderr);
 
 #endif

@@ -8,6 +8,7 @@
 #include "pci.h"
 #include "pic.h"
 #include "syscall.h"
+#include "term.h"
 
 extern struct context *active_ctx;
 
@@ -28,6 +29,7 @@ int main() {
 	init_first_ctx();
 	init_memory(active_ctx);
 	init_syscalls();
+	init_root_term();
 
 	register_ata();
 
@@ -38,12 +40,12 @@ int main() {
 	log(LOG_INFO, LOG_KERNEL,
 	    "All essential systems loaded. Welcome to muse!\n");
 
-	load_elf("/ext2/bin/test.o", 0, 0);
+	load_elf("/ext2/bin/test.o", 0, 0, root_term, root_term, root_term);
 
 	preempt();
 
 	lock_scheduler();
-	create_context(idle, 1, false, 0, 0);
+	create_context(idle, 1, false, 0, 0, root_term, root_term, root_term);
 	unlock_scheduler();
 
 	for (;;) {

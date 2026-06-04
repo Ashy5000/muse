@@ -25,7 +25,9 @@ struct context {
 };
 
 void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
-                    struct scroll *first_scr, vaddr_t limit);
+                    struct scroll *first_scr, vaddr_t limit,
+                    struct vfs_inode *stdin, struct vfs_inode *stdout,
+                    struct vfs_inode *stderr);
 void context_switch(struct context *ctx_new);
 void init_first_ctx(void);
 void lock_scheduler(void);

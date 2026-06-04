@@ -2,7 +2,7 @@
 
 void *memcpy(void *restrict s1, const void *restrict s2, size_t n) {
 	for (size_t i = 0; i < n; i++) {
-		((unsigned char*)s1)[i] = ((unsigned char*)s2)[i];
+		((unsigned char *)s1)[i] = ((unsigned char *)s2)[i];
 	}
 	return s1;
 }
@@ -12,13 +12,13 @@ void *memmove(void *s1, const void *s2, size_t n) {
 		return memcpy(s1, s2, n);
 	}
 	for (size_t i = 0; i < n; i++) {
-		((unsigned char*)s1)[n - i] = ((unsigned char*)s2)[n - i];
+		((unsigned char *)s1)[n - i] = ((unsigned char *)s2)[n - i];
 	}
 	return s1;
 }
 
 char *strcpy(char *restrict s1, const char *restrict s2) {
-	for (size_t i = 0; ; i++) {
+	for (size_t i = 0;; i++) {
 		s1[i] = s2[i];
 		if (!s2[i]) {
 			break;
@@ -40,7 +40,9 @@ char *strncpy(char *restrict s1, const char *restrict s2, size_t n) {
 
 char *strcat(char *restrict s1, const char *restrict s2) {
 	size_t null_idx = 0;
-	while (s1[null_idx]) { null_idx++; }
+	while (s1[null_idx]) {
+		null_idx++;
+	}
 	size_t i = 0;
 	while (s2[i]) {
 		s1[null_idx + i] = s2[i];
@@ -52,9 +54,11 @@ char *strcat(char *restrict s1, const char *restrict s2) {
 
 char *strncat(char *restrict s1, const char *restrict s2, size_t n) {
 	size_t null_idx = 0;
-	while (s1[null_idx]) { null_idx++; }
+	while (s1[null_idx]) {
+		null_idx++;
+	}
 	size_t i = 0;
-	for(; i < n; i++) {
+	for (; i < n; i++) {
 		if (!s2[i]) {
 			i++;
 			break;
@@ -67,8 +71,8 @@ char *strncat(char *restrict s1, const char *restrict s2, size_t n) {
 
 int memcmp(const void *s1, const void *s2, size_t n) {
 	for (size_t i = 0; i < n; i++) {
-		unsigned char c1 = ((unsigned char*)s1)[i];
-		unsigned char c2 = ((unsigned char*)s2)[i];
+		unsigned char c1 = ((unsigned char *)s1)[i];
+		unsigned char c2 = ((unsigned char *)s2)[i];
 		if (c1 != c2) {
 			return c1 - c2;
 		}
@@ -83,15 +87,15 @@ int strcmp(const char *s1, const char *s2) {
 			return 0;
 		}
 	}
-	return ((unsigned char*)s1)[i] - ((unsigned char*)s2)[i];
+	return ((unsigned char *)s1)[i] - ((unsigned char *)s2)[i];
 }
 
 // TODO: strcoll()
 
 int strncmp(const char *s1, const char *s2, size_t n) {
 	for (size_t i = 0; i < n; i++) {
-		unsigned char c1 = ((unsigned char*)s1)[i];
-		unsigned char c2 = ((unsigned char*)s2)[i];
+		unsigned char c1 = ((unsigned char *)s1)[i];
+		unsigned char c2 = ((unsigned char *)s2)[i];
 		if (c1 != c2) {
 			return c1 - c2;
 		}
@@ -106,8 +110,8 @@ int strncmp(const char *s1, const char *s2, size_t n) {
 
 void *memchr(const void *s, int c, size_t n) {
 	for (size_t i = 0; i < n; i++) {
-		if (((unsigned char*)s)[i] == c) {
-			return (void*)s + i;
+		if (((unsigned char *)s)[i] == c) {
+			return (void *)s + i;
 		}
 	}
 	return 0;
@@ -116,12 +120,12 @@ void *memchr(const void *s, int c, size_t n) {
 char *strchr(const char *s, int c) {
 	while (*s) {
 		if (*s == c) {
-			return (char*)s;
+			return (char *)s;
 		}
 		s++;
 	}
 	if (c == 0) {
-		return (char*)s;
+		return (char *)s;
 	}
 	return 0;
 }
@@ -146,7 +150,7 @@ char *strpbrk(const char *s1, const char *s2) {
 		size_t i = 0;
 		while (s2[i]) {
 			if (*s1 == s2[i]) {
-				return (char*)s1;
+				return (char *)s1;
 			}
 			i++;
 		}
@@ -159,17 +163,16 @@ char *strrchr(const char *s, int c) {
 	char *res = 0;
 	while (*s) {
 		if (*s == c) {
-			res = (char*)s;
+			res = (char *)s;
 		}
 		s++;
 	}
 	return res;
 }
 
-
 size_t strspn(const char *s1, const char *s2) {
 	unsigned char good = 0;
-	size_t i = 0;
+	size_t i           = 0;
 	while (*s1) {
 		size_t j = 0;
 		while (s2[j]) {
@@ -186,4 +189,12 @@ size_t strspn(const char *s1, const char *s2) {
 		i++;
 	}
 	return i;
+}
+
+size_t strlen(const char *s) {
+	size_t len = 0;
+	while (s[len]) {
+		len++;
+	}
+	return len;
 }

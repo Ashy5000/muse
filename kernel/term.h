@@ -1,6 +1,7 @@
 #ifndef TERM_H
 #define TERM_H
 
+#include "sync.h"
 #include "vfs.h"
 #include <stddef.h>
 
@@ -17,8 +18,7 @@ struct stdin {
 	                       active line) */
 	size_t bfr_offset;  /* The file position of the start of the buffer */
 	struct stdin_line lines[TERM_BFR_HEIGHT];
-	bool transaction_active;
-	uint32_t waiting_readers;
+	volatile struct lock_multi *lock;
 };
 
 void init_root_term();

@@ -15,7 +15,7 @@ void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
 	}
 	uint32_t file_size = file->size;
 	void *contents     = kmalloc(file_size);
-	if (file->transfer(file, 0, file_size, contents, DRV_READ) !=
+	if (file->transfer(file, 0, file_size, contents, DIR_READ) !=
 	    file_size) {
 		kfree(contents);
 		return;

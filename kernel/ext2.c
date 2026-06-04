@@ -9,26 +9,25 @@
 
 __attribute__((warn_unused_result)) enum hal_drive_res
 group_descriptor_transfer(struct ext2_superblock *superblock,
-                          struct partition *partition, uint32_t idx,
+                          struct vfs_inode *bdev, uint32_t idx,
                           struct ext2_block_group_descriptor *descriptor,
-                          enum hal_drive_dir dir) {
+                          enum data_dir dir) {
 	uint32_t block_size = 1024 << superblock->block_size_log;
 	uint32_t lba =
 	    (idx * sizeof(struct ext2_block_group_descriptor) / SECTOR_SIZE);
 	lba += MAX(block_size, 2048) / SECTOR_SIZE;
 	struct ext2_block_group_descriptor *descriptors = kmalloc(SECTOR_SIZE);
 	enum hal_drive_res err =
-	    partition->dev->transfer(partition, lba, 1, descriptors, DRV_READ);
+	    bdev->transfer(bdev, lba, 1, descriptors, DIR_READ);
 	if (err) {
 		return err;
 	}
-	if (dir == DRV_WRITE) {
+	if (dir == DIR_WRITE) {
 		descriptors[idx %
 		            (SECTOR_SIZE /
 		             sizeof(struct ext2_block_group_descriptor))] =
 		    *descriptor;
-		err = partition->dev->transfer(partition, lba, 1, descriptors,
-		                               DRV_READ);
+		err = bdev->transfer(bdev, lba, 1, descriptors, DIR_READ);
 		if (err) {
 			return err;
 		}
@@ -43,9 +42,8 @@ group_descriptor_transfer(struct ext2_superblock *superblock,
 }
 
 enum hal_drive_res inode_transfer(struct ext2_superblock *superblock,
-                                  struct partition *partition, uint32_t inode_i,
-                                  struct ext2_inode *inode,
-                                  enum hal_drive_dir dir) {
+                                  struct vfs_inode *bdev, uint32_t inode_i,
+                                  struct ext2_inode *inode, enum data_dir dir) {
 	uint32_t group      = (inode_i - 1) / superblock->inodes_per_group;
 	uint32_t idx        = (inode_i - 1) % superblock->inodes_per_group;
 	uint32_t inode_size = 128;
@@ -57,14 +55,14 @@ enum hal_drive_res inode_transfer(struct ext2_superblock *superblock,
 
 	struct ext2_block_group_descriptor group_descriptor;
 	enum hal_drive_res err = group_descriptor_transfer(
-	    superblock, partition, group, &group_descriptor, DRV_READ);
+	    superblock, bdev, group, &group_descriptor, DIR_READ);
 	if (err) {
 		return err;
 	}
 
 	lba += group_descriptor.inode_table * block_size / SECTOR_SIZE;
 	struct ext2_inode *inodes = kmalloc(SECTOR_SIZE);
-	err = partition->dev->transfer(partition, lba, 1, inodes, DRV_READ);
+	err = bdev->transfer(bdev, lba, 1, inodes, DIR_READ);
 	if (err) {
 		kfree(inodes);
 		return err;
@@ -74,14 +72,13 @@ enum hal_drive_res inode_transfer(struct ext2_superblock *superblock,
 	log(LOG_DEBUG, LOG_EXT2, "inode offset: %x.\n",
 	    lba * SECTOR_SIZE + offset * inode_size);
 
-	if (dir == DRV_READ) {
+	if (dir == DIR_READ) {
 		*inode = *((struct ext2_inode *)(((void *)inodes) +
 		                                 (offset * inode_size)));
 	} else {
 		*((struct ext2_inode *)(((void *)inodes) +
 		                        (offset * inode_size))) = *inode;
-		err = partition->dev->transfer(partition, lba, 1, inodes,
-		                               DRV_WRITE);
+		err = bdev->transfer(bdev, lba, 1, inodes, DIR_WRITE);
 		if (err) {
 			kfree(inodes);
 			return err;
@@ -100,11 +97,10 @@ enum hal_drive_res inode_transfer(struct ext2_superblock *superblock,
  *	itself. Returns 0 if no free inode is found.
  */
 uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
-                        struct partition *partition, uint32_t group,
-                        bool inode) {
+                        struct vfs_inode *bdev, uint32_t group, bool inode) {
 	struct ext2_block_group_descriptor descriptor;
 	enum hal_drive_res err = group_descriptor_transfer(
-	    superblock, partition, group, &descriptor, DRV_READ);
+	    superblock, bdev, group, &descriptor, DIR_READ);
 	if (err) {
 		return 0;
 	}
@@ -115,8 +111,8 @@ uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
 		return 0;
 	}
 	uint32_t block_size = 1024 << superblock->block_size_log;
-	err = group_descriptor_transfer(superblock, partition, group,
-	                                &descriptor, DRV_READ);
+	err = group_descriptor_transfer(superblock, bdev, group, &descriptor,
+	                                DIR_READ);
 	if (err) {
 		return 0;
 	}
@@ -129,8 +125,8 @@ uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
 		    (descriptor.block_bitmap_addr * block_size / SECTOR_SIZE);
 	}
 	uint8_t *bitmap = kmalloc(block_size);
-	err             = partition->dev->transfer(
-	    partition, bitmap_lba, block_size / SECTOR_SIZE, bitmap, DRV_READ);
+	err = bdev->transfer(bdev, bitmap_lba, block_size / SECTOR_SIZE, bitmap,
+	                     DIR_READ);
 	if (err) {
 		return 0;
 	}
@@ -142,10 +138,9 @@ uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
 		for (uint8_t j = 0; j < 8; j++) {
 			if (!((bitmap_byte >> j) & 1)) {
 				bitmap[i] |= 1 << j;
-				err = partition->dev->transfer(
-				    partition, bitmap_lba,
-				    block_size / SECTOR_SIZE, bitmap,
-				    DRV_WRITE);
+				err = bdev->transfer(bdev, bitmap_lba,
+				                     block_size / SECTOR_SIZE,
+				                     bitmap, DIR_WRITE);
 				kfree(bitmap);
 				if (err) {
 					return 0;
@@ -177,10 +172,9 @@ uint32_t alloc_ext2_obj(struct ext2_superblock *superblock,
 }
 
 enum hal_drive_res inode_data_transfer(struct ext2_superblock *superblock,
-                                       struct partition *partition,
-                                       uint32_t inode_i,
+                                       struct vfs_inode *bdev, uint32_t inode_i,
                                        struct ext2_inode *inode, uint32_t idx,
-                                       void *data, enum hal_drive_dir dir) {
+                                       void *data, enum data_dir dir) {
 	enum hal_drive_res err = 0;
 	uint32_t block_size    = 1024 << superblock->block_size_log;
 	uint32_t lba           = DRV_ERR_BAD_ARGS;
@@ -189,7 +183,7 @@ enum hal_drive_res inode_data_transfer(struct ext2_superblock *superblock,
 		if (!inode->direct_blocks[idx]) {
 			log(LOG_DEBUG, LOG_EXT2, "inode_i: %x.\n", inode_i);
 			inode->direct_blocks[idx] = alloc_ext2_obj(
-			    superblock, partition, inode->group_id, false);
+			    superblock, bdev, inode->group_id, false);
 			write_inode = true;
 			if (err) {
 				log(LOG_WARN, LOG_EXT2,
@@ -201,47 +195,45 @@ enum hal_drive_res inode_data_transfer(struct ext2_superblock *superblock,
 		lba = inode->direct_blocks[idx] * block_size / SECTOR_SIZE;
 	} else if (idx < 12 + (block_size / sizeof(uint32_t))) {
 		if (!inode->indirect_block_single) {
-			if (dir == DRV_READ) {
+			if (dir == DIR_READ) {
 				return DRV_ERR_BAD_ARGS;
 			}
 			inode->indirect_block_single = alloc_ext2_obj(
-			    superblock, partition, inode->group_id, false);
+			    superblock, bdev, inode->group_id, false);
 			write_inode = true;
 		}
 		// Singly indirect block
 		uint32_t *indirect_block = kmalloc(block_size);
-		err                      = partition->dev->transfer(
-		    partition, inode->indirect_block_single,
-		    block_size / SECTOR_SIZE, indirect_block, DRV_READ);
+		err = bdev->transfer(bdev, inode->indirect_block_single,
+		                     block_size / SECTOR_SIZE, indirect_block,
+		                     DIR_READ);
 		if (err) {
 			return err;
 		}
 		lba = indirect_block[idx - 12] * block_size / SECTOR_SIZE;
 		if (!lba) {
 			indirect_block[idx - 12] = alloc_ext2_obj(
-			    superblock, partition, inode->group_id, false);
-			err = partition->dev->transfer(
-			    partition, inode->indirect_block_single,
-			    block_size / SECTOR_SIZE, indirect_block,
-			    DRV_WRITE);
+			    superblock, bdev, inode->group_id, false);
+			err = bdev->transfer(bdev, inode->indirect_block_single,
+			                     block_size / SECTOR_SIZE,
+			                     indirect_block, DIR_WRITE);
 			lba =
 			    indirect_block[idx - 12] * block_size / SECTOR_SIZE;
 		}
 	}
 
-	if (dir == DRV_WRITE) {
+	if (dir == DIR_WRITE) {
 		log(LOG_DEBUG, LOG_EXT2, "Transferring to LBA %x.\n", lba);
 	}
 	// TODO: Handle doubly and triply indirect blocks
-	err = partition->dev->transfer(partition, lba, block_size / SECTOR_SIZE,
-	                               data, dir);
+	err = bdev->transfer(bdev, lba, block_size / SECTOR_SIZE, data, dir);
 	if (err) {
 		return err;
 	}
 
 	if (write_inode) {
-		err = inode_transfer(superblock, partition, inode_i, inode,
-		                     DRV_WRITE);
+		err =
+		    inode_transfer(superblock, bdev, inode_i, inode, DIR_WRITE);
 	}
 	return err;
 }
@@ -261,9 +253,9 @@ enum hal_drive_res enumerate_children(struct vfs_inode *inode_v) {
 	struct ext2_directory_entry *entry = buf;
 	enum hal_drive_res err;
 	for (uint32_t i = 0; i < blocks; i++) {
-		err = inode_data_transfer(
-		    payload->superblock, payload->partition, payload->inode_id,
-		    &inode, i, buf + (block_size * i), DRV_READ);
+		err = inode_data_transfer(payload->superblock, payload->bdev,
+		                          payload->inode_id, &inode, i,
+		                          buf + (block_size * i), DIR_READ);
 		if (err) {
 			return err;
 		}
@@ -301,20 +293,18 @@ uint32_t alloc_child_inode(struct vfs_inode *parent) {
 		uint32_t group;
 		if (parent_group >= d) {
 			// Check earlier inode
-			group = parent_group - d;
-			uint32_t inode =
-			    alloc_ext2_obj(payload->superblock,
-			                   payload->partition, group, true);
+			group          = parent_group - d;
+			uint32_t inode = alloc_ext2_obj(
+			    payload->superblock, payload->bdev, group, true);
 			if (inode) {
 				return inode;
 			}
 		}
 		if (parent_group + d < group_cnt) {
 			// Check later inode
-			group = parent_group + d;
-			uint32_t inode =
-			    alloc_ext2_obj(payload->superblock,
-			                   payload->partition, group, true);
+			group          = parent_group + d;
+			uint32_t inode = alloc_ext2_obj(
+			    payload->superblock, payload->bdev, group, true);
 			if (inode) {
 				return inode;
 			}
@@ -364,7 +354,7 @@ uint32_t alloc_child_inode(struct vfs_inode *parent) {
 // }
 
 uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
-                       void *data, enum hal_drive_dir dir) {
+                       void *data, enum data_dir dir) {
 	struct ext2_vfs_payload *payload = inode->backend_data;
 	uint32_t block_size = 1024 << payload->superblock->block_size_log;
 
@@ -383,9 +373,9 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 	uint32_t bytes_written = 0;
 	enum hal_drive_res err;
 	for (;;) {
-		err = inode_data_transfer(
-		    payload->superblock, payload->partition, payload->inode_id,
-		    &payload->inode, block, bfr, DRV_READ);
+		err = inode_data_transfer(payload->superblock, payload->bdev,
+		                          payload->inode_id, &payload->inode,
+		                          block, bfr, DIR_READ);
 		if (err) {
 			break;
 		}
@@ -399,14 +389,14 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 			cnt += offset + len - block_end;
 		}
 		cnt -= skip;
-		if (dir == DRV_READ) {
+		if (dir == DIR_READ) {
 			memcpy(data + bytes_written, bfr + skip, cnt);
 		} else {
 			memcpy(bfr + skip, data + bytes_written, cnt);
 			err = inode_data_transfer(
-			    payload->superblock, payload->partition,
+			    payload->superblock, payload->bdev,
 			    payload->inode_id, &payload->inode, block, bfr,
-			    DRV_WRITE);
+			    DIR_WRITE);
 			if (err) {
 				break;
 			}
@@ -420,13 +410,13 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 		block_end += block_size;
 	}
 
-	if (dir == DRV_WRITE && offset + len >= payload->inode.size_lo) {
+	if (dir == DIR_WRITE && offset + len >= payload->inode.size_lo) {
 		payload->inode.size_lo = offset + len;
 		payload->inode.sector_count =
 		    (payload->inode.size_lo + SECTOR_SIZE - 1) / SECTOR_SIZE;
-		err = inode_transfer(payload->superblock, payload->partition,
+		err = inode_transfer(payload->superblock, payload->bdev,
 		                     payload->inode_id, &payload->inode,
-		                     DRV_WRITE);
+		                     DIR_WRITE);
 	}
 
 	kfree(bfr);
@@ -440,11 +430,10 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	child.backend_data                      = child_payload;
 	struct ext2_vfs_payload *parent_payload = parent->backend_data;
 	child_payload->superblock               = parent_payload->superblock;
-	child_payload->dev                      = parent_payload->dev;
-	child_payload->partition                = parent_payload->partition;
+	child_payload->bdev                     = parent_payload->bdev;
 	child_payload->inode_id                 = tchild->inode_id;
-	inode_transfer(child_payload->superblock, child_payload->partition,
-	               tchild->inode_id, &child_payload->inode, DRV_READ);
+	inode_transfer(child_payload->superblock, child_payload->bdev,
+	               tchild->inode_id, &child_payload->inode, DIR_READ);
 	child_payload->group = (tchild->inode_id - 1) /
 	                       child_payload->superblock->inodes_per_group;
 	enumerate_children(&child);
@@ -455,11 +444,11 @@ void ext2_register_inode(struct vfs_inode *parent, struct vfs_tnode *tchild) {
 	tchild->inode        = child;
 }
 
-enum hal_drive_res detect_ext2(struct partition *partition) {
+enum hal_drive_res detect_ext2(struct vfs_inode *bdev) {
 	struct ext2_superblock *superblock = kmalloc(SECTOR_SIZE * 2);
 
 	enum hal_drive_res err =
-	    partition->dev->transfer(partition, 2, 2, superblock, DRV_READ);
+	    bdev->transfer(bdev, 2, 2, superblock, DIR_READ);
 	if (err) {
 		return err;
 	}
@@ -476,14 +465,13 @@ enum hal_drive_res detect_ext2(struct partition *partition) {
 	    superblock->superblock_block);
 
 	struct ext2_inode root;
-	inode_transfer(superblock, partition, 2, &root, DRV_READ);
+	inode_transfer(superblock, bdev, 2, &root, DIR_READ);
 
 	struct vfs_inode inode;
 	struct ext2_vfs_payload *payload =
 	    kmalloc(sizeof(struct ext2_vfs_payload));
 	payload->inode       = root;
-	payload->dev         = partition->dev;
-	payload->partition   = partition;
+	payload->bdev        = bdev;
 	payload->superblock  = superblock;
 	payload->group       = 0;
 	inode.backend_data   = payload;

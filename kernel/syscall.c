@@ -1,4 +1,5 @@
 #include "syscall.h"
+#include "alloc.h"
 #include "context.h"
 #include "logging.h"
 #include "paging.h"
@@ -62,12 +63,13 @@ uint32_t syscall_open(uint32_t *args) {
 		return -1;
 	}
 
-	/* TODO: Reference count inode */
 	struct vfs_inode *inode = vfs_open(path);
 	if (!inode) {
 		// TODO: If MODE_CREATE is set, create a file.
 		return -1;
 	}
+	inode->refs++;
+
 	for (unsigned int i = 0; i < FOPEN_MAX; i++) {
 		if (active_ctx->files[i].mode == 0) {
 			active_ctx->files[i].inode = inode;
@@ -93,10 +95,10 @@ uint32_t syscall_open(uint32_t *args) {
  * and puts the extra unused bits of the FD (which is always -15 <= 15) to use.
  */
 uint32_t syscall_transfer(uint32_t *args) {
-	int fd                 = args[0];
-	enum hal_drive_dir dir = DRV_READ;
+	int fd            = args[0];
+	enum data_dir dir = DIR_READ;
 	if (fd < 0) {
-		dir = DRV_WRITE;
+		dir = DIR_WRITE;
 		fd  = -fd;
 	}
 	if (fd >= FOPEN_MAX) {
@@ -144,10 +146,15 @@ uint32_t syscall_seek(uint32_t *args) {
 }
 
 uint32_t syscall_close(uint32_t *args) {
-	/* TODO: Reference count inode */
-	int fd                      = args[0];
-	active_ctx->files[fd].mode  = 0;
-	active_ctx->files[fd].pos   = 0;
+	int fd                     = args[0];
+	active_ctx->files[fd].mode = 0;
+	active_ctx->files[fd].pos  = 0;
+	struct vfs_inode *inode    = active_ctx->files[fd].inode;
+	inode->refs--;
+	if (!inode->refs) {
+		kfree(inode->backend_data);
+		inode->present = false;
+	}
 	active_ctx->files[fd].inode = 0;
 	return 0;
 }

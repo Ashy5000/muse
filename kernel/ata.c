@@ -105,7 +105,7 @@ flush_cache(struct ata_dev *dev) {
 
 __attribute__((warn_unused_result)) enum hal_drive_res
 ata_transfer(struct partition *partition, lba_t lba_offset,
-             uint8_t sector_count, void *data, enum hal_drive_dir dir) {
+             uint8_t sector_count, void *data, enum data_dir dir) {
 	lba_t lba = lba_offset + partition->start;
 	if (lba >= partition->limit) {
 		return DRV_ERR_BAD_ARGS;
@@ -120,9 +120,9 @@ ata_transfer(struct partition *partition, lba_t lba_offset,
 	if (res) {
 		return res;
 	}
-	if (dir == DRV_READ) {
+	if (dir == DIR_READ) {
 		outb(dev->bus + ATA_REG_CMD, ATA_CMD_READ_SECTORS);
-	} else if (dir == DRV_WRITE) {
+	} else if (dir == DIR_WRITE) {
 		outb(dev->bus + ATA_REG_CMD, ATA_CMD_WRITE_SECTORS);
 	} else {
 		return DRV_ERR_BAD_ARGS;
@@ -137,7 +137,7 @@ ata_transfer(struct partition *partition, lba_t lba_offset,
 			return res;
 		}
 		for (uint32_t j = 0; j < 256; j++) {
-			if (dir == DRV_READ) {
+			if (dir == DIR_READ) {
 				data_w[j + (i * 256)] =
 				    inw(dev->bus + ATA_REG_DATA);
 			} else {

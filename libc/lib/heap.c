@@ -2,11 +2,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#define MIN_CHUNK_SIZE_LOG 4
+#define MIN_CHUNK_SIZE     (1 << MIN_CHUNK_SIZE_LOG)
 #define TIER_IDX(X) ((31 - __builtin_clz((uintptr_t)X)) - MIN_CHUNK_SIZE_LOG)
-#define MIN_CHUNK_SIZE_LOG   4
-#define MIN_CHUNK_SIZE       (1 << MIN_CHUNK_SIZE_LOG)
 #define CHUNK_SIZE_LIMIT_LOG 15
-#define CHUNK_SIZE_LIMIT     (1 << MAX_CHUNK_SIZE_LOG)
 #define TIER_CNT             CHUNK_SIZE_LIMIT_LOG - MIN_CHUNK_SIZE_LOG
 #define CHUNK_OVERHEAD       (2 * sizeof(size_t))
 #define BIT_FREE             1
@@ -108,6 +107,7 @@ void *malloc(size_t size) {
 	                                       prev_size */
 	new_ch->size = ch_size;
 	global_heap.limit += ch_size;
+	global_heap.size += ch_size;
 	return (void *)new_ch + CHUNK_OVERHEAD;
 }
 
@@ -123,4 +123,5 @@ void free(void *ptr) {
 	unsigned int i       = TIER_IDX(ch->size & SIZE_MASK);
 	ch->next             = global_heap.tiers[i];
 	global_heap.tiers[i] = ch;
+	global_heap.free += ch->size & SIZE_MASK;
 }

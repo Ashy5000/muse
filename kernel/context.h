@@ -6,14 +6,16 @@
 
 #define FOPEN_MAX 16
 
+/* TODO: Split this into processes and threads */
 struct context {
 	mem_t esp;
 	paddr_t page_directory;
 
 	bool present;
+	uint32_t id;
 	struct context *next;
 
-	void *heap; // TODO: Get rid of this
+	void *heap; // TODO: Handle this better
 	bool user;
 	vaddr_t limit;
 
@@ -29,7 +31,7 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
                     struct vfs_inode *stdin, struct vfs_inode *stdout,
                     struct vfs_inode *stderr);
 void context_switch(struct context *ctx_new);
-void init_first_ctx(void);
+void init_scheduler(void);
 void lock_scheduler(void);
 void unlock_scheduler(void);
 void schedule(void);

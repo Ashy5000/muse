@@ -3,6 +3,7 @@
 #include "context.h"
 #include "logging.h"
 #include "paging.h"
+#include "sync.h"
 
 #include <stdbool.h>
 
@@ -37,11 +38,14 @@ uint32_t erase_unusable_regions(uint32_t entry_count) {
 	return entry_count_new;
 }
 
+struct lock_simple bitmap_lock;
+
 uint32_t get_bitmap_count(uint32_t idx) {
 	return *((uint32_t *)(uintptr_t)mmap_table[idx].addr_low);
 }
 
 void *kpage_alloc() {
+	lock_simple_acquire(&bitmap_lock);
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		uint32_t num_bitmaps = get_bitmap_count(i);
 		paddr_t addr         = (uintptr_t)mmap_table[i].addr_low +
@@ -54,18 +58,21 @@ void *kpage_alloc() {
 			for (uint32_t k = 0; k < 32; k++) {
 				if (((*bitmap >> k) & 1) == 0) {
 					*bitmap |= 1 << k;
+					lock_simple_release(&bitmap_lock);
 					return (void *)(uintptr_t)addr;
 				}
 				addr += PAGE_SIZE;
 			}
 		}
 	}
+	lock_simple_release(&bitmap_lock);
 	log(LOG_WARN, LOG_MEM, "Out of memory!");
 	__asm__ volatile("hlt");
 	return 0;
 }
 
 void kpage_set_status(paddr_t addr, bool free) {
+	lock_simple_acquire(&bitmap_lock);
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		uint32_t num_bitmaps =
 		    *((uint32_t *)(uintptr_t)mmap_table[i].addr_low);
@@ -85,6 +92,7 @@ void kpage_set_status(paddr_t addr, bool free) {
 			} else {
 				*bitmap |= 1 << bit_idx;
 			}
+			lock_simple_release(&bitmap_lock);
 			return;
 		}
 	}
@@ -95,8 +103,9 @@ void init_memory(struct context *ctx) {
 	*entry_count = erase_unusable_regions(*entry_count);
 	log(LOG_INFO, LOG_MEM, "Found %i free areas.\n", *entry_count);
 
-	// Create bitmaps at the start of each free region
+	bitmap_lock.stat = 0;
 
+	// Create bitmaps at the start of each free region
 	for (uint32_t i = 0; i < *entry_count; i++) {
 		mem_t addr = mmap_table[i].addr_low + sizeof(uint32_t);
 		mem_t size = mmap_table[i].size_low - sizeof(uint32_t);

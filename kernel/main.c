@@ -9,6 +9,7 @@
 #include "pic.h"
 #include "syscall.h"
 #include "term.h"
+#include "userspace.h"
 
 extern struct context *active_ctx;
 
@@ -26,7 +27,8 @@ int main() {
 	init_apic();
 	init_ioapic();
 	init_idt();
-	init_first_ctx();
+	init_userspace();
+	init_scheduler();
 	init_memory(active_ctx);
 	init_syscalls();
 	init_root_term();

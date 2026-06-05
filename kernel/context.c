@@ -9,6 +9,8 @@ struct context *last_ctx   = 0;
 
 struct context first_ctx;
 
+uint32_t ctx_id = 0;
+
 extern void __attribute__((cdecl)) context_switch(struct context *ctx_new);
 
 extern uint32_t tick_period;
@@ -22,6 +24,7 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
 	ctx_new->priority       = priority;
 	ctx_new->heap           = (void *)0x10000;
 	ctx_new->present        = true;
+	ctx_new->id             = ctx_id++;
 	ctx_new->page_directory =
 	    create_task_directory(func_ptr, user, first_scr);
 	ctx_new->slices_remaining = 0;
@@ -54,9 +57,10 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
 	unlock_scheduler();
 }
 
-void init_first_ctx() {
+void init_scheduler() {
 	active_ctx           = &first_ctx;
 	active_ctx->present  = true;
+	active_ctx->id       = ctx_id++;
 	active_ctx->next     = 0;
 	active_ctx->priority = 1;
 }

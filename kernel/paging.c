@@ -1,8 +1,8 @@
 #include "paging.h"
-#include "context.h"
-#include "memory.h"
-#include "logging.h"
 #include "alloc.h"
+#include "context.h"
+#include "logging.h"
+#include "memory.h"
 
 #define LOOPBACK_DIR    ((paging_table_t)0xFFFFF000)
 #define LOOPBACK_TBL(I) ((paging_table_t)(uintptr_t)(0xFFC00000 + 0x400 * (I)))
@@ -232,6 +232,7 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user,
 	table_virt[PG_TBL_IDX(TASK_STACK_BASE - PAGE_SIZE)] =
 	    create_paging_entry(stack_scr.aligned_backend.page, true, true,
 	                        false);
+
 	// Fill the kernel stack
 	uint32_t *stack = (uint32_t *)(uintptr_t)(stack_scr.vaddr + PAGE_SIZE);
 	stack[-1]       = (uintptr_t)func_ptr;

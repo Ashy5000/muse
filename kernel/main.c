@@ -29,7 +29,7 @@ int main() {
 	init_idt();
 	init_userspace();
 	init_scheduler();
-	init_memory(active_ctx);
+	init_memory();
 	init_syscalls();
 	init_root_term();
 

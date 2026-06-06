@@ -1,216 +1,184 @@
 #include "alloc.h"
 #include "context.h"
 #include "logging.h"
-#include "paging.h"
-#include "scroll.h"
+#include "memory.h"
 
 extern struct context *active_ctx;
 
-void fuse_blocks(struct block_header *header) {
-	if ((header->free & 2) >
-	    0) { // This is the last header, nothing to fuse with.
-		return;
+/* This function does what sbrk() does for malloc() in userspace but in the
+ * kernel. It expands the end of the heap. */
+void *heap_sbrk(intptr_t inc) {
+	void *prev_lim = active_ctx->ctx_heap->limit;
+	if (prev_lim + inc > active_ctx->ctx_heap->max_limit) {
+		log(LOG_ERROR, LOG_ALLOC, "Out of memory!\n");
+		__asm__ volatile("cli; hlt");
 	}
-	struct block_header *header_next =
-	    (struct block_header *)((uintptr_t)header +
-	                            sizeof(struct block_header) + header->size);
-	if (!get_page_mapping((uintptr_t)header_next)) {
-		header->size = ((uintptr_t)header_next + PAGE_SIZE -
-		                ((uintptr_t)header_next % PAGE_SIZE)) -
-		               (uintptr_t)header;
-	} else if ((header_next->free & 1) > 0) {
-		header->size += sizeof(struct block_header) + header_next->size;
-	}
-	header->free = 1;
+	active_ctx->ctx_heap->limit += inc;
+	return prev_lim;
 }
 
-#ifdef ALLOC_CANARY
-#define CHECK_CANARY(H)                                                        \
-	for (uint32_t i = 0; i < 4; i++) {                                     \
-		if ((H)->canary[i] != "MUSE"[i]) {                             \
-			log(LOG_ERROR, LOG_ALLOC,                              \
-			    "Heap canary was overwritten! Block at "           \
-			    "%x.\n",                                           \
-			    (uintptr_t)(H) + sizeof(struct block_header));     \
-			__asm__ volatile("cli; hlt");                          \
-		}                                                              \
+void init_heap(struct heap *temp_heap) {
+	temp_heap->size = 0;
+	temp_heap->free = 0;
+	for (unsigned int i = 0; i < TIER_CNT; i++) {
+		temp_heap->tiers[i] = 0;
 	}
-#else
-#define CHECK_CANARY(H)
-#endif
+	active_ctx->ctx_heap   = temp_heap;
+	// There is always a prev_size stored at the end of the heap
+	size_t *root_prev_size = heap_sbrk(sizeof(*root_prev_size));
+	temp_heap->limit = (void *)root_prev_size + sizeof(*root_prev_size);
+	*root_prev_size  = 0;
+	temp_heap->page_bitmap =
+	    kmalloc(sizeof(uint32_t) * temp_heap->bitmap_cnt);
+	for (unsigned int i = 0; i < temp_heap->bitmap_cnt; i++) {
+		temp_heap->page_bitmap[i] = 0;
+	}
+	struct heap *ctx_heap = kmalloc(sizeof(*ctx_heap));
+	*ctx_heap             = *temp_heap;
+	active_ctx->ctx_heap  = ctx_heap;
+}
 
-void *kmalloc(vaddr_t size) {
-	void *block = active_ctx->heap;
-	struct block_header *header;
-	while (1) {
-		header = block;
-		CHECK_CANARY(header);
-		if ((header->free & 1) == 0) {
-			if ((header->free & 2) > 0) {
-				break;
-			}
-			block += header->size + sizeof(struct block_header);
+void split_chunk(struct chunk *ch, size_t size) {
+	/* These chunks are not next to each other in the linked list: they are
+	 * adjacent in memory. */
+	struct chunk *next_ch =
+	    (void *)ch +
+	    (ch->size & SIZE_MASK); /* The chunk after the one being split. */
+	struct chunk *new_ch =
+	    (void *)ch + size +
+	    CHUNK_OVERHEAD; /* The new chunk being created in the split. */
+
+	/* Calculate the size of the new chunk. This *includes* its
+	 * overhead. */
+	new_ch->size =
+	    ((ch->size & SIZE_MASK) - size - CHUNK_OVERHEAD) | BIT_FREE;
+	ch->size           = size + CHUNK_OVERHEAD;
+	new_ch->prev_size  = ch->size;
+
+	next_ch->prev_size = new_ch->size; /* Because we are changing the size
+	                                      of chunks, we need to inform the
+	                                      next one of our changes. */
+
+	/* Put the new chunk into the correct tier. */
+	unsigned int idx   = TIER_IDX(new_ch);
+	new_ch->next       = active_ctx->ctx_heap->tiers[idx];
+	/* TODO: Don't completely obliterate the cache. */
+	active_ctx->ctx_heap->tiers[idx] = new_ch;
+}
+
+void *kmalloc(size_t size) {
+	size_t ch_size = size + CHUNK_OVERHEAD >= MIN_CHUNK_SIZE
+	                     ? size + CHUNK_OVERHEAD
+	                     : MIN_CHUNK_SIZE;
+	unsigned int i =
+	    TIER_IDX(ch_size); /* The index of the tier the chunk will be in. */
+	struct chunk *ch =
+	    active_ctx->ctx_heap->tiers[i]; /* The chunk we are examining. */
+	struct chunk *prev = 0;             /* The previous chunk. */
+	while (ch) {
+		if ((ch->size & SIZE_MASK) < ch_size) {
+			/* There isn't enough room in the chunk. */
+			prev = ch;
+			ch   = ch->next;
 			continue;
 		}
-		if (header->size >= size) {
-			for (vaddr_t vaddr = (uintptr_t)header & ADDR_MASK;
-			     vaddr < (uintptr_t)header + header->size;
-			     vaddr += PAGE_SIZE) {
-				if (!get_page_mapping(vaddr)) {
-					map_page(vaddr,
-					         (uintptr_t)kpage_alloc());
-				}
-			}
-			if (header->size - size > sizeof(struct block_header)) {
-				struct block_header *new_header =
-				    block + size + sizeof(struct block_header);
-				new_header->size = header->size - size -
-				                   sizeof(struct block_header);
-				new_header->free = 1;
-#ifdef ALLOC_CANARY
-				memcpy(new_header->canary, "MUSE", 4);
-#endif
-				if ((header->free & 2) > 0) {
-					new_header->free = 3;
-					header->free &= ~2;
-				}
-				header->size = size;
-			}
-			header->free &= ~1;
-			vaddr_t begin =
-			    (uintptr_t)header + sizeof(struct block_header);
-			return (void *)(uintptr_t)begin;
-		}
-		uint32_t new_block = (uintptr_t)block + header->size +
-		                     sizeof(struct block_header);
-		if (get_page_mapping(new_block)) {
-			// Next header exists, everything is fine
-			block = (void *)(uintptr_t)new_block;
+		/* Remove from linked list */
+		if (prev) {
+			prev->next = ch->next;
 		} else {
-			// Next header doesn't exist. Expand the current header
-			// to contain it and try to claim this header again.
-			header->size =
-			    (new_block + PAGE_SIZE - (new_block % PAGE_SIZE)) -
-			    (uintptr_t)block - sizeof(struct block_header);
+			active_ctx->ctx_heap->tiers[i] = ch->next;
+		}
+
+		/* Is it worth it to split into two chunks?
+		   TODO: Parametrize this better */
+		if ((ch->size & SIZE_MASK) >=
+		    ch_size + MIN_CHUNK_SIZE + CHUNK_OVERHEAD) {
+			split_chunk(ch, size);
+		}
+		void *res = (void *)ch + CHUNK_OVERHEAD;
+		log(LOG_INFO, LOG_ALLOC, "kmalloc() returning %x.\n", res);
+		return res;
+	}
+
+	struct chunk *new_ch = active_ctx->ctx_heap->limit -
+	                       sizeof(size_t); /* Overlap with prev_size stored
+	                                at the end of the heap */
+	heap_sbrk(ch_size); /* Make sure to allocate a new terminating
+	                                       prev_size */
+	new_ch->size = ch_size;
+	active_ctx->ctx_heap->size += size;
+	void *res = (void *)new_ch + CHUNK_OVERHEAD;
+	log(LOG_INFO, LOG_ALLOC, "kmalloc() returning %x.\n", res);
+	return res;
+}
+
+void kfree(void *ptr) {
+	if (ptr >= active_ctx->ctx_heap->aligned_start) {
+		size_t offset = ptr - active_ctx->ctx_heap->aligned_start;
+		if (offset <
+		    active_ctx->ctx_heap->bitmap_cnt * 32 * PAGE_SIZE) {
+			active_ctx->ctx_heap
+			    ->page_bitmap[offset / (32 * PAGE_SIZE)] |=
+			    1 << ((offset / PAGE_SIZE) % 32);
+			return;
 		}
 	}
-	log(LOG_WARN, LOG_ALLOC, "kmalloc() failed: out of memory!\n");
-	return 0;
+	struct chunk *ch = ptr - CHUNK_OVERHEAD;
+	if (ch->prev_size & BIT_FREE) {
+		struct chunk *merged_ch =
+		    (void *)ch - (ch->prev_size & SIZE_MASK);
+		merged_ch->size += ch->size;
+		ch = merged_ch;
+	}
+	ch->size |= BIT_FREE;
+	unsigned int i                 = TIER_IDX(ch->size & SIZE_MASK);
+	ch->next                       = active_ctx->ctx_heap->tiers[i];
+	active_ctx->ctx_heap->tiers[i] = ch;
+	active_ctx->ctx_heap->free += ch->size & SIZE_MASK;
 }
 
 void *kmalloc_aligned() {
-	struct block_header *header = active_ctx->heap;
-	while (1) {
-		CHECK_CANARY(header);
-		if ((header->free & 1) == 0) {
-			if ((header->free & 2) > 0) {
-				break;
+	for (uint32_t i = 0; i < active_ctx->ctx_heap->bitmap_cnt; i++) {
+		for (uint32_t j = 0; j < 32; j++) {
+			if (!(active_ctx->ctx_heap->page_bitmap[i] >> j)) {
+				active_ctx->ctx_heap->page_bitmap[i] |= 1 << j;
+				void *res =
+				    active_ctx->ctx_heap->aligned_start +
+				    (i * 32 + j) * PAGE_SIZE;
+				log(LOG_INFO, LOG_ALLOC,
+				    "kmalloc_aligned() returning %x.\n", res);
+				return res;
 			}
-			header =
-			    (struct block_header *)((uintptr_t)header +
-			                            header->size +
-			                            sizeof(
-							struct block_header));
-			continue;
-		}
-		vaddr_t page_start   = (uintptr_t)header + PAGE_SIZE -
-		                       ((uintptr_t)header % PAGE_SIZE);
-		vaddr_t page_end     = page_start + PAGE_SIZE;
-		vaddr_t header_start = page_start - sizeof(struct block_header);
-		while (header_start <
-		       (uintptr_t)header + sizeof(struct block_header)) {
-			page_start += PAGE_SIZE;
-			page_end += PAGE_SIZE;
-			header_start += PAGE_SIZE;
-		}
-		if ((uintptr_t)header + header->size + sizeof(*header) >=
-		    page_end) {
-			vaddr_t header_page_start =
-			    header_start - (header_start % PAGE_SIZE);
-			if (!get_page_mapping(header_page_start)) {
-				map_page(header_page_start,
-				         (uintptr_t)kpage_alloc());
-			}
-			struct block_header *page_header =
-			    (struct block_header *)(uintptr_t)header_start;
-#ifdef ALLOC_CANARY
-			memcpy(page_header->canary, "MUSE", 4);
-#endif
-			page_header->free = 0;
-			if ((header->free & 2) > 0) {
-				page_header->free = 2;
-				header->free      = 1;
-			}
-			page_header->size =
-			    (uintptr_t)header + header->size - page_start;
-			struct block_header *excess_header =
-			    (struct block_header *)(uintptr_t)(page_end);
-			vaddr_t excess_page =
-			    (uintptr_t)excess_header -
-			    ((uintptr_t)excess_header % PAGE_SIZE);
-			if ((uintptr_t)(excess_header + 1) <
-			    (uintptr_t)header + header->size) {
-				if (!get_page_mapping(excess_page)) {
-					map_page(excess_page,
-					         (uintptr_t)kpage_alloc());
-				}
-#ifdef ALLOC_CANARY
-				memcpy(excess_header->canary, "MUSE", 4);
-#endif
-				excess_header->size = (uintptr_t)header +
-				                      header->size -
-				                      (uintptr_t)excess_header;
-				excess_header->free = 1;
-				if ((page_header->free & 2) > 0) {
-					excess_header->free = 3;
-					page_header->free   = 0;
-				}
-				page_header->size = PAGE_SIZE;
-			}
-			header->size = header_start - (uintptr_t)header -
-			               sizeof(struct block_header);
-			return (void *)(uintptr_t)page_start;
-		}
-		void *new_header = (void *)((uintptr_t)header + header->size +
-		                            sizeof(struct block_header));
-		if (get_page_mapping((uintptr_t)new_header)) {
-			header = new_header;
-		} else {
-			header->size =
-			    (uintptr_t)((new_header + PAGE_SIZE -
-			                 ((uintptr_t)new_header % PAGE_SIZE)) -
-			                (uintptr_t)header -
-			                sizeof(struct block_header));
 		}
 	}
-	log(LOG_WARN, LOG_ALLOC, "kmalloc_aligned() failed: out of memory!\n");
+	log(LOG_ERROR, LOG_ALLOC, "Out of virtual page-sized chunks!\n");
+	__asm__ volatile("cli; hlt");
 	return 0;
 }
 
 struct scroll kmalloc_page() {
-	uint32_t page_addr = (uintptr_t)kmalloc_aligned();
+	vaddr_t page_virt = (vaddr_t)kmalloc_aligned();
 	struct scroll scr;
 	scr.size                 = 0;
 	scr.type                 = SCROLL_FAILED;
 	scr.aligned_backend.page = 0;
 	scr.vaddr                = 0;
-	if (!page_addr) {
+	if (!page_virt) {
 		return scr;
 	}
+
+	paddr_t page_phys = (paddr_t)kpage_alloc();
+	if (!page_phys) {
+		return scr;
+	}
+
+	map_page(page_virt, page_phys);
+
 	scr.size                 = PAGE_SIZE;
 	scr.type                 = SCROLL_ALIGNED;
-	scr.aligned_backend.page = get_page_mapping(page_addr);
-	if (!scr.aligned_backend.page) {
-		scr.aligned_backend.page = (uintptr_t)kpage_alloc();
-		map_page(page_addr, scr.aligned_backend.page);
-	}
-	scr.vaddr = page_addr;
-	map_page(scr.vaddr, scr.aligned_backend.page);
+	scr.vaddr                = page_virt;
+	scr.aligned_backend.page = page_phys;
+	log(LOG_INFO, LOG_ALLOC, "Allocated page: v%x->p%x.\n", scr.vaddr,
+	    scr.aligned_backend.page);
 	return scr;
-}
-
-void kfree(void *p) {
-	struct block_header *header = (struct block_header *)p - 1;
-	header->free |= 1;
-	fuse_blocks(header);
 }

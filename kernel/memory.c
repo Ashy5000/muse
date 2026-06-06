@@ -10,6 +10,8 @@
 extern void *hpet_base;
 extern void *hpet_limit;
 
+extern struct context *active_ctx;
+
 uint32_t reserved_pages_count = 0;
 uint32_t reserved_pages[MAX_RESERVED_PAGES];
 
@@ -98,7 +100,7 @@ void kpage_set_status(paddr_t addr, bool free) {
 	}
 }
 
-void init_memory(struct context *ctx) {
+void init_memory() {
 	// Find the first free region. Remove all non-free regions
 	*entry_count = erase_unusable_regions(*entry_count);
 	log(LOG_INFO, LOG_MEM, "Found %i free areas.\n", *entry_count);
@@ -137,16 +139,20 @@ void init_memory(struct context *ctx) {
 	}
 
 	// Intialize paging
-	ctx->page_directory         = init_paging();
+	active_ctx->page_directory = init_paging();
 
 	// STAGE IV
 	// OBJECTIVE: Set up kernel heap
 
-	ctx->heap                   = (void *)0x10000;
-	struct block_header *header = ctx->heap;
-	header->free                = 3;
-	header->size = 0x30000; // TODO: actually base this on something
-#ifdef ALLOC_CANARY
-	memcpy(header->canary, "MUSE", 4);
-#endif
+	/* All of this is completely arbitrary. This might be the worst-written
+	 * piece of code in the entire OS. FIXME!!!!*/
+	struct heap heap_temp;
+	heap_temp.limit         = (void *)0x10000;
+	heap_temp.max_limit     = (void *)0x90000;
+	heap_temp.bitmap_cnt    = 10;
+	heap_temp.aligned_start = (void *)(ALIGN_PG_UP(
+	    mmap_table[0].addr_low +
+	    sizeof(uint32_t) *
+		(1 + *((uint32_t *)(vaddr_t)mmap_table[0].addr_low))));
+	init_heap(&heap_temp);
 }

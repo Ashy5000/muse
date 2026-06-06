@@ -22,7 +22,7 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
 	lock_scheduler();
 	struct context *ctx_new = kmalloc(sizeof(struct context));
 	ctx_new->priority       = priority;
-	ctx_new->heap           = (void *)0x10000;
+	ctx_new->ctx_heap       = active_ctx->ctx_heap;
 	ctx_new->present        = true;
 	ctx_new->id             = ctx_id++;
 	ctx_new->page_directory =

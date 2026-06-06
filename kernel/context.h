@@ -1,6 +1,7 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
+#include "alloc.h"
 #include "scroll.h"
 #include "vfs.h"
 
@@ -15,7 +16,7 @@ struct context {
 	uint32_t id;
 	struct context *next;
 
-	void *heap; // TODO: Handle this better
+	struct heap *ctx_heap;
 	bool user;
 	vaddr_t limit;
 

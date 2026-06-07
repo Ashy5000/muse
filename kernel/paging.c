@@ -141,26 +141,33 @@ bool check_user(vaddr_t vaddr) {
 }
 
 void enable_paging(uint32_t *directory) {
+	__asm__ volatile("xchgw %bx, %bx");
 	__asm__ volatile("mov %0, %%cr3" ::"r"(directory) : "memory");
 	__asm__ volatile(
 	    "mov %%cr0, %%eax; or %0, %%eax; mov %%eax, %%cr0" ::"r"(CR0_FLAGS)
 	    : "eax");
 }
 
-paddr_t init_paging() {
+paddr_t init_paging(struct scroll *scroll) {
 	uint32_t *directory = kpage_alloc();
 	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
 		directory[i] = 0;
 	}
-	map_page_range_inactive(directory, 0, 0, 1024 * 1024 / PAGE_SIZE);
-	for (uint32_t i = 0; i < *entry_count; i++) {
-		uint32_t bitmap_count =
-		    ((uint32_t *)(uintptr_t)(mmap_table[i].addr_low))[0];
+	while (scroll) {
+		map_page_range_inactive(directory, scroll->vaddr, scroll->vaddr,
+		                        scroll->size / PAGE_SIZE);
+		scroll = scroll->next;
+	}
+	for (uint32_t i = 0; i < MMAP_CNT; i++) {
+		if (!mmap_table[i].available) {
+			break;
+		}
+		uint32_t bitmap_count = ((uint32_t *)(mmap_table[i].addr))[0];
 		uint32_t pages =
 		    (bitmap_count * sizeof(uint32_t) + PAGE_SIZE - 1) /
 		    PAGE_SIZE;
-		map_page_range_inactive(directory, mmap_table[i].addr_low,
-		                        mmap_table[i].addr_low, pages);
+		map_page_range_inactive(directory, mmap_table[i].addr,
+		                        mmap_table[i].addr, pages);
 	}
 	for (uint32_t i = 0; i < reserved_pages_count; i++) {
 		map_page_inactive(directory, reserved_pages[i],

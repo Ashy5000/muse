@@ -14,7 +14,7 @@ CC = $(CROSS_ROOT)/i686-muse-gcc
 AS = $(CROSS_ROOT)/i686-muse-as
 LD = $(CROSS_ROOT)/i686-muse-ld
 AR = $(CROSS_ROOT)/i686-muse-ar
-CFLAGS = -Wall -Werror -Wextra -O1
+CFLAGS = -Wall -Werror -Wextra -O1 -DBOOT_GRUB
 
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
 DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
@@ -45,41 +45,56 @@ $(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 endef
 
 define assemble =
-$(AS) $< -o $@ -g
+$(AS) $< -o $@
 endef
 
 all: build
 
 .PHONY: all libc build run debug clean todo
 
-build: disk.bin
+build: $(BUILD_DIR)/disk.img
 
 run: build
-	qemu-system-i386 -drive format=raw,file=disk.bin -no-reboot -no-shutdown -gdb tcp::9000
+	qemu-system-i386 -drive format=raw,file=$(BUILD_DIR)/disk.img \
+	-drive if=pflash,format=raw,readonly=on,file=/home/ashy5000/Downloads/bios32.bin \
+	-no-reboot -no-shutdown
 
 debug: build
 	bochs -dbg
 
 clean:
-	rm $(BUILD_DIR)/*.o
+	rm -rf $(BUILD_DIR)/*.o
 
 todo:
-	-@for file in $(ALL_SRC:Makefile=); do grep -F -H -e TODO -e FIXME $$file; done; true
+	-@for file in $(ALL_SRC:Makefile_grub=); do grep -F -H -e TODO -e FIXME $$file; done; true
 
-disk.bin: $(BUILD_DIR)/boot_sect.bin $(BUILD_DIR)/kernel.bin $(INCLUDE_DIR) $(LIBC_PATH) $(RUNTIME_OBJS)
-	dd if=/dev/zero of=disk.bin bs=512 count=131072
-	sudo sh -c "yes | parted disk.bin mktable GPT"
-	sudo parted disk.bin mkpart MUSEKRN 2048s 4095s -a none
-	sudo parted disk.bin mkpart MUSEFS 4096s 131001s -a none
-	dd if=$(BUILD_DIR)/boot_sect.bin of=disk.bin bs=1 count=446 conv=notrunc
-	dd if=$(BUILD_DIR)/kernel.bin of=disk.bin bs=512 seek=2048 count=64 conv=notrunc
-	-sudo umount /dev/loop0 -q
-	sudo losetup -D
-	sudo losetup /dev/loop0 disk.bin -o 2097152
-	sudo sh -c "yes | mke2fs /dev/loop0 63453k"
-	sudo mount /dev/loop0 /mnt
-	sudo cp -r fs/* /mnt/
-	sync
+$(BUILD_DIR)/disk.img: $(BUILD_DIR)/esp.img $(BUILD_DIR)/rootfs.img
+	truncate -s 128M $@
+	dd if=/dev/zero of=$@ bs=512 count=262144
+	sgdisk $@ -n 1:2048:+64M -t 1:ef00 -n 2:0:0 -t 2:8300
+	dd if=$(BUILD_DIR)/esp.img of=$@ bs=512 seek=2048 conv=notrunc
+	dd if=$(BUILD_DIR)/rootfs.img of=$@ bs=512 seek=113120 conv=notrunc
+
+$(BUILD_DIR)/rootfs.img:
+	truncate -s 64M $@
+	mke2fs -t ext2 -F $@
+
+$(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
+	truncate -s 64M $@
+	mkfs.fat -F32 $@
+	mmd -i $@ ::/EFI
+	mmd -i $@ ::/EFI/BOOT
+	mmd -i $@ ::/boot
+	mmd -i $@ ::/boot/grub
+	mcopy -i $@ $(BUILD_DIR)/BOOTIA32.EFI ::/EFI/BOOT/
+	mcopy -i $@ grub.cfg ::/boot/grub
+	mcopy -i $@ $(BUILD_DIR)/muse ::/boot
+
+$(BUILD_DIR)/BOOTIA32.EFI:
+	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot configfile all_video
+
+$(BUILD_DIR)/muse: boot.o $(KERNEL_OBJS) $(DRIVER_OBJS)
+	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc
 
 -include $(ALL_DEPS)
 
@@ -91,24 +106,21 @@ $(LIBC_PATH): $(LIBC_OBJS)
 	$(AR) rcs $@ $^
 
 $(BUILD_DIR)/boot_sect.bin: bootloader/
-	cd bootloader; nasm boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
+	cd bootloader; $(AS) boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
 
-$(BUILD_DIR)/$(LIBC_SRC)/%.o: $(LIBC_SRC)/%.c Makefile
+$(BUILD_DIR)/$(LIBC_SRC)/%.o: $(LIBC_SRC)/%.c Makefile_grub
 	$(compile-usr-c)
 
 $(BUILD_DIR)/%.o: %.c Makefile
 	$(compile-c)
 
-kernel_entry.o: kernel_entry.c Makefile
-	$(compile-c)
+boot.o: boot.S
+	$(assemble)
 
 $(BUILD_DIR)/%.o: %.asm
 	$(assemble)
 
 $(LIB_DIR)/%.o: $(RUNTIME_SRC)/%.asm
 	$(assemble)
-
-$(BUILD_DIR)/kernel.bin: kernel_entry.o $(KERNEL_OBJS) $(DRIVER_OBJS)
-	$(LD) -o $@ -Ttext 0x8000 $^ $(HOME)/opt/cross/lib/gcc/i686-muse/17.0.0/libgcc.a --oformat binary
 
 libc: $(LIBC_PATH)

@@ -1,8 +1,10 @@
 #include "elf.h"
 #include "alloc.h"
 #include "context.h"
+#include "logging.h"
 #include "scroll.h"
 #include "userspace.h"
+#include "utils.h"
 #include "vfs.h"
 
 #define PT_LOAD 1
@@ -110,4 +112,41 @@ void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
 	kfree(contents);
 	kfree(data);
 	unlock_scheduler();
+}
+
+struct scroll reserve_multiboot_kernel(
+    struct multiboot_elf_section_header_table *multiboot_header) {
+	struct elf_section_header *section_table =
+	    (struct elf_section_header *)(uintptr_t)multiboot_header->addr;
+	uintptr_t kernel_start = -1;
+	uintptr_t kernel_end   = 0;
+	char *string_table =
+	    (char *)(uintptr_t)(section_table[multiboot_header->shndx].sh_addr);
+	for (unsigned int i = 0; i < multiboot_header->num; i++) {
+		if (!section_table[i].sh_addr || !section_table[i].sh_type ||
+		    !(section_table[i].sh_flags & 0x2)) {
+			continue;
+		}
+		log(LOG_INFO, LOG_MEM, "Found section %s from %x->%x.\n",
+		    string_table + section_table[i].sh_name,
+		    section_table[i].sh_addr,
+		    section_table[i].sh_addr + section_table[i].sh_size);
+		kernel_start = MIN(section_table[i].sh_addr, kernel_start);
+		kernel_end =
+		    MAX(section_table[i].sh_addr + section_table[i].sh_size,
+		        kernel_end);
+	}
+	log(LOG_INFO, LOG_MEM, "Reserving kernel memory from %x->%x.\n",
+	    kernel_start, kernel_end);
+	paddr_t first_pg = ALIGN_PG_DOWN(kernel_start);
+	paddr_t last_pg  = ALIGN_PG_DOWN(kernel_end);
+	for (paddr_t pg_start = first_pg; pg_start <= last_pg;
+	     pg_start += PAGE_SIZE) {
+		kpage_set_status(pg_start, false);
+	}
+	struct scroll res;
+	res.vaddr = ALIGN_PG_DOWN(kernel_start);
+	res.size  = ALIGN_PG_UP(kernel_end) - res.vaddr;
+	res.type  = SCROLL_UNBACKED;
+	return res;
 }

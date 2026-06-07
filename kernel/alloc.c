@@ -96,7 +96,6 @@ void *kmalloc(size_t size) {
 			split_chunk(ch, size);
 		}
 		void *res = (void *)ch + CHUNK_OVERHEAD;
-		log(LOG_INFO, LOG_ALLOC, "kmalloc() returning %x.\n", res);
 		return res;
 	}
 
@@ -108,7 +107,6 @@ void *kmalloc(size_t size) {
 	new_ch->size = ch_size;
 	active_ctx->ctx_heap->size += size;
 	void *res = (void *)new_ch + CHUNK_OVERHEAD;
-	log(LOG_INFO, LOG_ALLOC, "kmalloc() returning %x.\n", res);
 	return res;
 }
 
@@ -145,7 +143,7 @@ void *kmalloc_aligned() {
 				void *res =
 				    active_ctx->ctx_heap->aligned_start +
 				    (i * 32 + j) * PAGE_SIZE;
-				log(LOG_INFO, LOG_ALLOC,
+				log(LOG_DEBUG, LOG_ALLOC,
 				    "kmalloc_aligned() returning %x.\n", res);
 				return res;
 			}
@@ -178,7 +176,7 @@ struct scroll kmalloc_page() {
 	scr.type                 = SCROLL_ALIGNED;
 	scr.vaddr                = page_virt;
 	scr.aligned_backend.page = page_phys;
-	log(LOG_INFO, LOG_ALLOC, "Allocated page: v%x->p%x.\n", scr.vaddr,
+	log(LOG_DEBUG, LOG_ALLOC, "Allocated page: v%x->p%x.\n", scr.vaddr,
 	    scr.aligned_backend.page);
 	return scr;
 }

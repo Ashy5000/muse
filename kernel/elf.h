@@ -2,6 +2,7 @@
 #define ELF_H
 
 #include "hal.h"
+#include "multiboot.h"
 #include "vfs.h"
 #include <stdint.h>
 
@@ -38,7 +39,22 @@ struct elf_program_header {
 	uint32_t alignment;
 };
 
+struct elf_section_header {
+	uint32_t sh_name;
+	uint32_t sh_type;
+	uint32_t sh_flags;
+	uint32_t sh_addr;
+	uint32_t sh_offset;
+	uint32_t sh_size;
+	uint32_t sh_link;
+	uint32_t sh_info;
+	uint32_t sh_addralign;
+	uint32_t sh_entsize;
+};
+
 void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
               struct vfs_inode *stdout, struct vfs_inode *stderr);
+struct scroll reserve_multiboot_kernel(
+    struct multiboot_elf_section_header_table *multiboot_header);
 
 #endif

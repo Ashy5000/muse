@@ -1,10 +1,12 @@
 #ifndef SCROLL_H
 #define SCROLL_H
 
-#include "memory.h"
+#include "int_types.h"
 
 enum scroll_type {
-	SCROLL_FAILED, SCROLL_ALIGNED,
+	SCROLL_FAILED,
+	SCROLL_UNBACKED,
+	SCROLL_ALIGNED,
 };
 
 struct scroll_aligned_backend {

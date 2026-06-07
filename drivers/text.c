@@ -1,5 +1,5 @@
 #include "text.h"
-#include "../kernel/memory.h"
+#include "../kernel/paging.h"
 #include "../kernel/sync.h"
 
 struct vga_cursor {
@@ -11,8 +11,12 @@ struct vga_cursor kcursor;
 struct lock_reentrant console_lock;
 
 char *video_memory = (char *)0xb8000;
+struct scroll vmem_scr;
 
 void init_console(void) {
+	vmem_scr.vaddr = ALIGN_PG_DOWN(video_memory);
+	vmem_scr.size  = ALIGN_PG_UP(80 * 24 * 2);
+	reserve_scroll(&vmem_scr);
 	console_lock.cnt   = 0;
 	console_lock.owner = 0;
 	lock_reentrant_acquire(&console_lock);

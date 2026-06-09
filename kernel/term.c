@@ -12,7 +12,7 @@ uint32_t term_transfer(struct vfs_inode *inode, uint32_t offset_p,
 	    "sti"); /* Allow context switching during this process */
 	if (dir == DIR_WRITE) {
 		for (uint32_t i = 0; i < size_p; i++) {
-			kput_char(((char *)data)[i]);
+			console_put_char(((char *)data)[i], 0xFFFFFF);
 		}
 	} else {
 		volatile struct stdin *in = inode->backend_data;

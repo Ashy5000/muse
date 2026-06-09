@@ -3,4 +3,5 @@
 *.d
 fs/
 build/
+deps/
 bx_enh_dbg.ini

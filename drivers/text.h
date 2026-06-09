@@ -1,36 +1,19 @@
 #ifndef TEXT_H
 #define TEXT_H
 
+#include "../kernel/multiboot.h"
+#include "vga.h"
 #include <stdarg.h>
 
-enum vga_text_color {
-	VGA_BLACK,
-	VGA_BLUE,
-	VGA_GREEN,
-	VGA_CYAN,
-	VGA_RED,
-	VGA_MAGENTA,
-	VGA_BROWN,
-	VGA_GRAY_LIGHT,
-	VGA_GRAY_DARK,
-	VGA_BLUE_LIGHT,
-	VGA_GREEN_LIGHT,
-	VGA_CYAN_LIGHT,
-	VGA_RED_LIGHT,
-	VGA_MAGENTA_LIGHT,
-	VGA_YELLOW,
-	VGA_WHITE,
-};
-
-void init_console(void);
-void kdel_char(void);
-void kput_char(char c);
-void kprint_hex(char *data, int len);
-void kprint_int(int x, int base);
-void kprint_int_full(int x, int base);
-void kvprintf(const char *fmt, va_list args);
-void kvprintf_fancy(const char *fmt, enum vga_text_color fg, enum vga_text_color bg, va_list args);
+void init_console(struct multiboot_tag_framebuffer *tag_fb);
+void console_put_char(char c, color_t color);
+void kprint_int_fancy(int x, int base, color_t color);
+#define kprint_int(X, B) kprint_int_fancy(X, B, 0xFFFFFF)
+void kprint_int_full_fancy(int x, int base, color_t color);
+#define kprint_int_full(X, B) kprint_int_full_fancy(X, B, 0xFFFFFF)
+#define kvprintf(F, A)        kvprintf_fancy(F, 0xFFFFFF, A)
+void kvprintf_fancy(const char *fmt, color_t color, va_list args);
 void kprintf(const char *fmt, ...);
-void kprintf_fancy(const char *fmt, enum vga_text_color fg, enum vga_text_color bg, ...);
+void kprintf_fancy(const char *fmt, color_t color, ...);
 
 #endif

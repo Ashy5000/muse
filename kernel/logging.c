@@ -23,19 +23,19 @@ void vlog(enum log_level level, enum log_class lclass, const char *fmt,
 
 	switch (level) {
 	case LOG_DEBUG:
-		kprintf_fancy("[DBG] ", VGA_WHITE, VGA_BLACK);
+		kprintf_fancy("[DBG] ", 0xFFFFFF);
 		break;
 	case LOG_INFO:
-		kprintf_fancy("[INF] ", VGA_CYAN, VGA_BLACK);
+		kprintf_fancy("[INF] ", 0x33CCFF);
 		break;
 	case LOG_WARN:
-		kprintf_fancy("[WRN] ", VGA_YELLOW, VGA_BLACK);
+		kprintf_fancy("[WRN] ", 0xFFFF1A);
 		break;
 	case LOG_ERROR:
-		kprintf_fancy("[ERR] ", VGA_RED, VGA_BLACK);
+		kprintf_fancy("[ERR] ", 0xFF3300);
 		break;
 	default:
-		kprintf_fancy("[???] ", VGA_MAGENTA, VGA_BLACK);
+		kprintf_fancy("[???] ", 0xFF3399);
 	}
 	switch (lclass) {
 	case LOG_ACPI:

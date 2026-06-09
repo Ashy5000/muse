@@ -13,9 +13,6 @@ extern void *hpet_limit;
 
 extern struct context *active_ctx;
 
-uint32_t reserved_pages_count = 0;
-uint32_t reserved_pages[MAX_RESERVED_PAGES];
-
 void memcpy(void *dst, void *src, mem_t size) {
 	for (uint32_t i = 0; i < size; i++) {
 		((char *)dst)[i] = ((char *)src)[i];
@@ -96,7 +93,7 @@ void reserve_scroll(struct scroll *scr) {
 	rsvd_scrolls = scr;
 }
 
-void init_memory(struct multiboot_elf_section_header_table *elf_table) {
+void init_memory(struct multiboot_tag_elf_sections *tag_elf) {
 	bitmap_lock.stat = 0;
 
 	// Create bitmaps at the start of each free region
@@ -127,13 +124,8 @@ void init_memory(struct multiboot_elf_section_header_table *elf_table) {
 		    mmap_table[i].addr);
 	}
 
-	for (uint32_t i = 0; i < reserved_pages_count; i++) {
-		kpage_set_status(reserved_pages[i], false);
-	}
-
-	kernel_scr                 = reserve_multiboot_kernel(elf_table);
-	kernel_scr.next            = rsvd_scrolls;
-	rsvd_scrolls               = &kernel_scr;
+	kernel_scr = reserve_multiboot_kernel(tag_elf);
+	reserve_scroll(&kernel_scr);
 
 	// Intialize paging
 	active_ctx->page_directory = init_paging(rsvd_scrolls);

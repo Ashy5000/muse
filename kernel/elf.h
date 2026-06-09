@@ -54,7 +54,7 @@ struct elf_section_header {
 
 void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
               struct vfs_inode *stdout, struct vfs_inode *stderr);
-struct scroll reserve_multiboot_kernel(
-    struct multiboot_elf_section_header_table *multiboot_header);
+struct scroll
+reserve_multiboot_kernel(struct multiboot_tag_elf_sections *tag_elf);
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef ACPI_H
 #define ACPI_H
 
+#include "multiboot.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -15,9 +16,8 @@ struct rsdp {
 	uint64_t xsdt_address;
 	uint8_t extended_checksum;
 	uint8_t reserved[3];
-} __attribute__ ((packed));
+} __attribute__((packed));
 
-struct rsdp *find_rsdp();
 bool verify_rsdp(struct rsdp *rsdp);
 
 struct acpi_sdt_header {
@@ -35,18 +35,18 @@ struct acpi_sdt_header {
 struct rsdt {
 	struct acpi_sdt_header header;
 	uint32_t sdt_ptrs[];
-} __attribute__ ((packed));
+} __attribute__((packed));
 
 struct xsdt {
 	struct acpi_sdt_header header;
 	uint64_t sdt_ptrs[];
-} __attribute__ ((packed));
+} __attribute__((packed));
 
 void *find_rsdt();
 
 void *find_sdt(char signature[4]);
 bool verify_sdt(void *sdt);
 
-void init_acpi();
+void init_acpi(struct multiboot_tag_old_acpi *tag_acpi);
 
 #endif

@@ -1,73 +1,88 @@
-#include "../drivers/hpet.h"
 #include "../drivers/text.h"
 #include "acpi.h"
 #include "apic.h"
-#include "context.h"
 #include "interrupts.h"
+#include "io.h"
 #include "logging.h"
+#include "memory.h"
 #include "multiboot.h"
 #include "pic.h"
-#include "syscall.h"
-#include "term.h"
-#include "userspace.h"
 
 extern struct mmap_entry mmap_table[MMAP_CNT];
 
-void main(struct multiboot_info *multiboot, uint32_t magic) {
-	init_console();
-	if (magic != MULTIBOOT_BOOTLOADER_MAGIC) {
-		log(LOG_ERROR, LOG_KERNEL, "Invalid multiboot magic number!\n");
-		__asm__ volatile("cli; hlt");
+void trampoline_main(void *multiboot, uint32_t magic) {
+	if (magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
+		__asm__ volatile("hlt");
 	}
 
-	if (!(multiboot->flags & MULTIBOOT_INFO_MEMORY)) {
-		log(LOG_ERROR, LOG_KERNEL,
-		    "Multiboot memory map not supplied!\n");
-		__asm__ volatile("cli; hlt");
-	}
+	log(LOG_INFO, LOG_KERNEL, "Multiboot info struct located at %x.\n",
+	    multiboot);
 
-	if (!(multiboot->flags & MULTIBOOT_INFO_ELF_SHDR)) {
-		log(LOG_ERROR, LOG_KERNEL,
-		    "ELF info not supplied via multiboot!\n");
-		__asm__ volatile("cli; hlt");
+	struct multiboot_tag_framebuffer *tag_fb =
+	    (struct multiboot_tag_framebuffer *)multiboot_find_tag(
+		multiboot, MULTIBOOT_TAG_TYPE_FRAMEBUFFER);
+	if (!tag_fb) {
+		log(LOG_ERROR, LOG_KERNEL, "Framebuffer tag not present!\n");
+		__asm__ volatile("hlt");
 	}
+	init_console(tag_fb);
 
 	for (unsigned int i = 0; i < MMAP_CNT; i++) {
 		mmap_table[i].available = false;
 	}
 
+	struct multiboot_tag_mmap *tag_mmap =
+	    (struct multiboot_tag_mmap *)multiboot_find_tag(
+		multiboot, MULTIBOOT_TAG_TYPE_MMAP);
+
+	if (!tag_mmap) {
+		log(LOG_ERROR, LOG_KERNEL, "No memory map tag found!\n");
+		__asm__ volatile("hlt");
+	}
+
+	struct multiboot_mmap_entry *entry =
+	    (struct multiboot_mmap_entry *)(uintptr_t)tag_mmap->entries;
 	uint32_t table_idx = 0;
-	for (unsigned int i = 0;
-	     i < multiboot->mmap_length / sizeof(struct multiboot_mmap_entry);
-	     i++) {
-		struct multiboot_mmap_entry *entry =
-		    &((struct multiboot_mmap_entry *)(uintptr_t)
-		          multiboot->mmap_addr)[i];
+	while ((void *)entry < (void *)tag_mmap + tag_mmap->size) {
 		log(LOG_INFO, LOG_MEM,
 		    "CHUNK FOUND - Addr: %x | Size: %x | Type: %i\n",
-		    entry->addr_low, entry->size_low, entry->type);
+		    entry->addr, entry->len, entry->type);
 		if (entry->type == MULTIBOOT_MEMORY_AVAILABLE) {
 			mmap_table[table_idx].available = true;
-			mmap_table[table_idx].addr      = entry->addr_low;
-			mmap_table[table_idx].size      = entry->size_low;
+			mmap_table[table_idx].addr      = entry->addr;
+			mmap_table[table_idx].size      = entry->len;
 			table_idx++;
 			if (table_idx == MMAP_CNT) {
 				break;
 			}
 		}
+		entry = (void *)entry + tag_mmap->entry_size;
 	}
 
-	init_memory(&multiboot->u.elf_sec);
-	// init_acpi();
-	// init_hpet();
-	// init_pic();
-	// init_apic();
-	// init_ioapic();
-	// init_idt();
-	// init_userspace();
-	// init_scheduler();
-	// init_syscalls();
-	// init_root_term();
+	struct multiboot_tag_old_acpi *tag_acpi =
+	    (struct multiboot_tag_old_acpi *)multiboot_find_tag(
+		multiboot, MULTIBOOT_TAG_TYPE_ACPI_OLD);
+	if (!tag_acpi) {
+		tag_acpi = (struct multiboot_tag_old_acpi *)multiboot_find_tag(
+		    multiboot, MULTIBOOT_TAG_TYPE_ACPI_NEW);
+		if (!tag_acpi) {
+			log(LOG_ERROR, LOG_KERNEL, "No ACPI tag found!\n");
+		}
+	}
+
+	init_acpi(tag_acpi);
+	init_pic();
+	init_apic();
+	init_ioapic();
+	init_idt();
+
+	struct multiboot_tag_elf_sections *tag_elf =
+	    (struct multiboot_tag_elf_sections *)multiboot_find_tag(
+		multiboot, MULTIBOOT_TAG_TYPE_ELF_SECTIONS);
+	if (!tag_elf) {
+		log(LOG_ERROR, LOG_KERNEL, "No ELF tag found!\n");
+	}
+	// init_memory(tag_elf);
 
 	for (;;) {
 		__asm__("hlt");

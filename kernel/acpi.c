@@ -1,28 +1,20 @@
-#include <stdbool.h>
 #include "acpi.h"
 #include "logging.h"
+#include <stdbool.h>
 
-__attribute__ ((nonstring)) char rsdp_signature[8] = "RSD PTR ";
+__attribute__((nonstring)) char rsdp_signature[8] = "RSD PTR ";
 
 struct rsdp *rsdp_global;
 void *rsdt_global;
 
-struct rsdp *find_rsdp() {
-	for (char *rsdp = (char*)0x000E0000; (uintptr_t)rsdp < 0x000FFFFF; rsdp += 0x10) {
-		bool correct_signature = true;
-		for (uint32_t i = 0; i < 8; i++) {
-			if (rsdp[i] != rsdp_signature[i]) {
-				correct_signature = false;
-				break;
-			}
-		}
-		if (correct_signature) {
-			log(LOG_INFO, LOG_ACPI, "Found RSDP at %x.\n", rsdp);
-			return (struct rsdp*)rsdp;
-		}
+struct rsdp *find_rsdp(struct multiboot_tag_old_acpi *tag_acpi) {
+	struct rsdp *res = (struct rsdp *)&tag_acpi->rsdp;
+	if (verify_rsdp(res)) {
+		log(LOG_INFO, LOG_ACPI, "Found RSDP at %x.\n", res);
+		return (struct rsdp *)res;
 	}
 	return 0;
-};
+}
 
 bool verify_rsdp(struct rsdp *rsdp) {
 	uint8_t sum = 0;
@@ -61,19 +53,22 @@ bool verify_rsdp(struct rsdp *rsdp) {
 void *find_rsdt() {
 	if (rsdp_global->revision == 0) {
 		// v1.0
-		return (struct rsdt*)(uintptr_t)(rsdp_global->rsdt_address);
+		return (struct rsdt *)(uintptr_t)(rsdp_global->rsdt_address);
 	} else {
 		// v2.0+
-		return (struct xsdt*)(uintptr_t)(rsdp_global->xsdt_address);
+		return (struct xsdt *)(uintptr_t)(rsdp_global->xsdt_address);
 	}
 }
 
 void *find_sdt(char signature[4]) {
 	struct rsdt *rsdt_struct = rsdt_global;
-	uint32_t entries = (rsdt_struct->header.length - sizeof(struct acpi_sdt_header)) / sizeof(uint32_t);
+	uint32_t entries =
+	    (rsdt_struct->header.length - sizeof(struct acpi_sdt_header)) /
+	    sizeof(uint32_t);
 	for (uint32_t i = 0; i < entries; i++) {
-		struct acpi_sdt_header *header = (struct acpi_sdt_header*)((uintptr_t)(rsdt_struct->sdt_ptrs[i]));
-		bool correct_signature = true;
+		struct acpi_sdt_header *header = (struct acpi_sdt_header *)((
+		    uintptr_t)(rsdt_struct->sdt_ptrs[i]));
+		bool correct_signature         = true;
 		for (uint32_t j = 0; j < 4; j++) {
 			if (header->signature[j] != signature[j]) {
 				correct_signature = false;
@@ -87,16 +82,16 @@ void *find_sdt(char signature[4]) {
 }
 
 bool verify_sdt(void *sdt) {
-	uint8_t sum = 0;
-	uint32_t length = ((struct acpi_sdt_header*)sdt)->length;
+	uint8_t sum     = 0;
+	uint32_t length = ((struct acpi_sdt_header *)sdt)->length;
 	for (uint32_t i = 0; i < length; i++) {
-		sum += ((char*)sdt)[i];
+		sum += ((char *)sdt)[i];
 	}
 	return sum == 0;
 }
 
-void init_acpi() {
-	rsdp_global = find_rsdp();
+void init_acpi(struct multiboot_tag_old_acpi *tag_acpi) {
+	rsdp_global = find_rsdp(tag_acpi);
 	if (!rsdp_global) {
 		log(LOG_ERROR, LOG_ACPI, "Failed to find RSDP!\n");
 		return;

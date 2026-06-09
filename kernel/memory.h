@@ -16,7 +16,7 @@ struct mmap_entry {
 
 typedef void (*func_ptr_t)(void);
 
-#define MMAP_CNT 8
+#define MMAP_CNT 16
 extern struct mmap_entry mmap_table[MMAP_CNT];
 
 struct context;
@@ -25,8 +25,6 @@ void memcpy(void *dst, void *src, mem_t size);
 void *kpage_alloc(void);
 void kpage_set_status(paddr_t addr, bool free);
 void reserve_scroll(struct scroll *scr);
-void init_memory(struct multiboot_elf_section_header_table *table);
-
-#define MAX_RESERVED_PAGES 16
+void init_memory(struct multiboot_tag_elf_sections *tag_elf);
 
 #endif

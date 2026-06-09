@@ -18,9 +18,6 @@
 
 #define CR0_FLAGS 0x80000001
 
-extern uint32_t reserved_pages_count;
-extern uint32_t reserved_pages[MAX_RESERVED_PAGES];
-
 paging_entry_t set_present(paging_entry_t entry, bool present) {
 	if (present) {
 		return entry | PAGING_BIT_PRESENT;
@@ -66,6 +63,9 @@ uint32_t check_or_insert_table_structure(uint32_t *directory, vaddr_t addr,
 		return index;
 	}
 	uint32_t *table = kpage_alloc();
+	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
+		table[i] = 0;
+	}
 	directory[index] =
 	    create_paging_entry((vaddr_t)table, true, true, user);
 	return index;
@@ -141,7 +141,6 @@ bool check_user(vaddr_t vaddr) {
 }
 
 void enable_paging(uint32_t *directory) {
-	__asm__ volatile("xchgw %bx, %bx");
 	__asm__ volatile("mov %0, %%cr3" ::"r"(directory) : "memory");
 	__asm__ volatile(
 	    "mov %%cr0, %%eax; or %0, %%eax; mov %%eax, %%cr0" ::"r"(CR0_FLAGS)
@@ -154,7 +153,8 @@ paddr_t init_paging(struct scroll *scroll) {
 		directory[i] = 0;
 	}
 	while (scroll) {
-		map_page_range_inactive(directory, scroll->vaddr, scroll->vaddr,
+		map_page_range_inactive(directory, scroll->vaddr,
+		                        scroll->aligned_backend.page,
 		                        scroll->size / PAGE_SIZE);
 		scroll = scroll->next;
 	}
@@ -168,10 +168,6 @@ paddr_t init_paging(struct scroll *scroll) {
 		    PAGE_SIZE;
 		map_page_range_inactive(directory, mmap_table[i].addr,
 		                        mmap_table[i].addr, pages);
-	}
-	for (uint32_t i = 0; i < reserved_pages_count; i++) {
-		map_page_inactive(directory, reserved_pages[i],
-		                  reserved_pages[i]);
 	}
 	directory[1023] =
 	    create_paging_entry((vaddr_t)directory, true, true, true);

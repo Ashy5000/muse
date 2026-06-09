@@ -8,13 +8,15 @@ LIBC_INCLUDE = libc/include
 INCLUDE_DIR = fs/usr/include
 LIBC_PATH = $(LIB_DIR)/libc.a
 SRC_DIRS = $(KERNEL_SRC) $(DRIVER_SRC) $(LIBC_SRC)
+DEPS_DIR = deps
 
 CROSS_ROOT = $(HOME)/opt/cross/bin
 CC = $(CROSS_ROOT)/i686-muse-gcc
 AS = $(CROSS_ROOT)/i686-muse-as
 LD = $(CROSS_ROOT)/i686-muse-ld
 AR = $(CROSS_ROOT)/i686-muse-ar
-CFLAGS = -Wall -Werror -Wextra -O1 -DBOOT_GRUB
+CPY = $(CROSS_ROOT)/i686-muse-objcopy
+CFLAGS = -Wall -Wextra -Werror -O0 -DBOOT_GRUB
 
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
 DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
@@ -28,7 +30,7 @@ RUNTIME_ASM_SOURCES = $(wildcard $(RUNTIME_SRC)/*.asm)
 
 KERNEL_DEPS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.d, $(KERNEL_C_SOURCES))
 DRIVER_DEPS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.d, $(DRIVER_C_SOURCES))
-LIBC_DEPS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.dm, $(LIBC_C_SOURCES))
+LIBC_DEPS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.d, $(LIBC_C_SOURCES))
 ALL_DEPS = $(KERNEL_DEPS) $(DRIVER_DEPS) $(LIBC_DEPS)
 
 KERNEL_OBJS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_C_SOURCES)) $(patsubst $(KERNEL_SRC)/%.asm, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_ASM_SOURCES))
@@ -37,11 +39,11 @@ LIBC_OBJS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_C_S
 RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SOURCES))
 
 define compile-c =
-$(CC) $(CFLAGS) -ffreestanding -MMD -MP -c $< -o $@
+$(CC) $(CFLAGS) -ffreestanding -MMD -MP -c $< -o $@ -g
 endef
 
 define compile-usr-c =
-$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+$(CC) $(CFLAGS) -MMD -MP -c $< -o $@ -g
 endef
 
 define assemble =
@@ -56,11 +58,13 @@ build: $(BUILD_DIR)/disk.img
 
 run: build
 	qemu-system-i386 -drive format=raw,file=$(BUILD_DIR)/disk.img \
-	-drive if=pflash,format=raw,readonly=on,file=/home/ashy5000/Downloads/bios32.bin \
+	-drive if=pflash,format=raw,readonly=on,file=$(DEPS_DIR)/bios32.bin \
 	-no-reboot -no-shutdown
 
 debug: build
-	bochs -dbg
+	qemu-system-i386 -drive format=raw,file=$(BUILD_DIR)/disk.img \
+	-drive if=pflash,format=raw,readonly=on,file=$(DEPS_DIR)/bios32.bin \
+	-no-reboot -no-shutdown -s -S
 
 clean:
 	rm -rf $(BUILD_DIR)/*.o
@@ -91,10 +95,15 @@ $(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
 	mcopy -i $@ $(BUILD_DIR)/muse ::/boot
 
 $(BUILD_DIR)/BOOTIA32.EFI:
-	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot configfile all_video
+	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot2 configfile all_video
 
-$(BUILD_DIR)/muse: boot.o $(KERNEL_OBJS) $(DRIVER_OBJS)
-	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc
+$(BUILD_DIR)/muse: boot.o $(KERNEL_OBJS) $(DRIVER_OBJS) $(BUILD_DIR)/font.o
+	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc -g
+	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/muse.sym
+	$(CPY) --strip-debug $@
+
+$(BUILD_DIR)/font.o: $(DEPS_DIR)/font.psf
+	$(CPY) -O elf32-i386 -I binary $< $@
 
 -include $(ALL_DEPS)
 
@@ -104,9 +113,6 @@ $(INCLUDE_DIR): $(LIBC_INCLUDE)
 
 $(LIBC_PATH): $(LIBC_OBJS) 
 	$(AR) rcs $@ $^
-
-$(BUILD_DIR)/boot_sect.bin: bootloader/
-	cd bootloader; $(AS) boot_sect.asm -f bin -o ../$(BUILD_DIR)/boot_sect.bin
 
 $(BUILD_DIR)/$(LIBC_SRC)/%.o: $(LIBC_SRC)/%.c Makefile_grub
 	$(compile-usr-c)

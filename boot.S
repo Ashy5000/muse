@@ -1,14 +1,38 @@
-.set ALIGN, 1
-.set MEMINFO, 2
-.set FLAGS, ALIGN | MEMINFO
-.set MAGIC, 0x1BADB002
-.set CHECKSUM, -(MAGIC + FLAGS)
+.set MAGIC, 0xE85250D6
+.set ARCH, 0
+.set HEADER_LEN, multiboot_end - multiboot_start
+.set CHECKSUM, -(MAGIC + ARCH + HEADER_LEN)
 
 .section .multiboot
-.align 4
-.long MAGIC
-.long FLAGS
-.long CHECKSUM
+.align 16
+multiboot_start:
+	.long MAGIC
+	.long ARCH
+	.long HEADER_LEN
+	.long CHECKSUM
+	# Information request tag
+.align 8
+	.word 1
+	.word 1
+	.long 24
+	.long 6
+	.long 8
+	.long 14
+	.long 15
+.align 8
+	# Framebuffer tag
+	.word 5
+	.word 1
+	.long 20
+	.long 0
+	.long 0
+	.long 32
+.align 8
+	# Terminating tag
+	.word 0
+	.word 0
+	.long 8
+multiboot_end:
 
 .section .bss
 .align 16
@@ -97,6 +121,6 @@ _start:
 	shr $8, %eax
 	mov %al, [tss_base_2]
 	lgdt [gdt_descriptor]
-	call main
+	call trampoline_main
 
 .size _start, . - _start

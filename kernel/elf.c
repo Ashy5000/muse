@@ -114,15 +114,15 @@ void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
 	unlock_scheduler();
 }
 
-struct scroll reserve_multiboot_kernel(
-    struct multiboot_elf_section_header_table *multiboot_header) {
+struct scroll
+reserve_multiboot_kernel(struct multiboot_tag_elf_sections *tag_elf) {
 	struct elf_section_header *section_table =
-	    (struct elf_section_header *)(uintptr_t)multiboot_header->addr;
+	    (struct elf_section_header *)&tag_elf->sections;
 	uintptr_t kernel_start = -1;
 	uintptr_t kernel_end   = 0;
 	char *string_table =
-	    (char *)(uintptr_t)(section_table[multiboot_header->shndx].sh_addr);
-	for (unsigned int i = 0; i < multiboot_header->num; i++) {
+	    (char *)(uintptr_t)(section_table[tag_elf->shndx].sh_addr);
+	for (unsigned int i = 0; i < tag_elf->num; i++) {
 		if (!section_table[i].sh_addr || !section_table[i].sh_type ||
 		    !(section_table[i].sh_flags & 0x2)) {
 			continue;
@@ -145,8 +145,9 @@ struct scroll reserve_multiboot_kernel(
 		kpage_set_status(pg_start, false);
 	}
 	struct scroll res;
-	res.vaddr = ALIGN_PG_DOWN(kernel_start);
-	res.size  = ALIGN_PG_UP(kernel_end) - res.vaddr;
-	res.type  = SCROLL_UNBACKED;
+	res.vaddr                = ALIGN_PG_DOWN(kernel_start);
+	res.aligned_backend.page = ALIGN_PG_DOWN(kernel_start);
+	res.size                 = ALIGN_PG_UP(kernel_end) - res.vaddr;
+	res.type                 = SCROLL_ALIGNED;
 	return res;
 }

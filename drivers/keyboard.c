@@ -194,10 +194,8 @@ unsigned char keycode_to_char(unsigned char keycode) {
 void handle_keypress_inner(void) {
 	unsigned char scan_code = inb(0x60);
 	unsigned char character = keycode_to_char(scan_code);
-	if (character == 255) {
-		kdel_char();
-	} else if (character != 0) {
-		kput_char(character);
+	if (character != 0) {
+		console_put_char(character, 0xFFFFFF);
 		term_stdin_putc(root_term,
 		                character); /* TODO: Use ringbuffer */
 	}

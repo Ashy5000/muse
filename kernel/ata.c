@@ -207,10 +207,10 @@ void detect_drive(uint16_t bus, uint8_t drive) {
 			}
 		}
 		if (i == 60) {
-			dev->lba_28_sector_count = data << 16;
+			dev->lba_28_sector_count = data;
 		}
 		if (i == 61) {
-			dev->lba_28_sector_count |= data;
+			dev->lba_28_sector_count |= data << 16;
 			if (dev->lba_28_sector_count) {
 				dev->lba28 = true;
 			}

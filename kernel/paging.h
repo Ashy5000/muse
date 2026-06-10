@@ -11,7 +11,10 @@
 #define TEN_BITS  0x3FF
 
 #define ALIGN_PG_DOWN(X) ((vaddr_t)(X) - ((vaddr_t)(X) % PAGE_SIZE))
-#define ALIGN_PG_UP(X)   (ALIGN_PG_DOWN((vaddr_t)X) + PAGE_SIZE)
+/* FIXME: Don't modify address if it's already aligned */
+#define ALIGN_PG_UP(X)                                                         \
+	((vaddr_t)(X) % PAGE_SIZE > 0 ? ALIGN_PG_DOWN((vaddr_t)X) + PAGE_SIZE  \
+	                              : (vaddr_t)(X))
 
 typedef uint32_t paging_entry_t;
 typedef paging_entry_t *paging_table_t;

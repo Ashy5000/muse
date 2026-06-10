@@ -450,10 +450,15 @@ enum hal_drive_res detect_ext2(struct vfs_inode *bdev) {
 	enum hal_drive_res err =
 	    bdev->transfer(bdev, 2, 2, superblock, DIR_READ);
 	if (err) {
+		log(LOG_ERROR, LOG_EXT2, "Failed to read superblock!\n");
+		kfree(superblock);
 		return err;
 	}
 
 	if (superblock->signature != 0xef53) {
+		log(LOG_DEBUG, LOG_EXT2,
+		    "Partition is not an EXT2 filesystem.\n");
+		kfree(superblock);
 		return DRV_SUCCESS;
 	}
 

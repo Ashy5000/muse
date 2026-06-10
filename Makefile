@@ -16,7 +16,7 @@ AS = $(CROSS_ROOT)/i686-muse-as
 LD = $(CROSS_ROOT)/i686-muse-ld
 AR = $(CROSS_ROOT)/i686-muse-ar
 CPY = $(CROSS_ROOT)/i686-muse-objcopy
-CFLAGS = -Wall -Wextra -Werror -O0 -DBOOT_GRUB
+CFLAGS = -Wall -Wextra -Werror -O0
 
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
 DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
@@ -77,7 +77,7 @@ $(BUILD_DIR)/disk.img: $(BUILD_DIR)/esp.img $(BUILD_DIR)/rootfs.img
 	dd if=/dev/zero of=$@ bs=512 count=262144
 	sgdisk $@ -n 1:2048:+64M -t 1:ef00 -n 2:0:0 -t 2:8300
 	dd if=$(BUILD_DIR)/esp.img of=$@ bs=512 seek=2048 conv=notrunc
-	dd if=$(BUILD_DIR)/rootfs.img of=$@ bs=512 seek=113120 conv=notrunc
+	dd if=$(BUILD_DIR)/rootfs.img of=$@ bs=512 seek=133120 conv=notrunc
 
 $(BUILD_DIR)/rootfs.img:
 	truncate -s 64M $@
@@ -97,13 +97,13 @@ $(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
 $(BUILD_DIR)/BOOTIA32.EFI:
 	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot2 configfile all_video
 
-$(BUILD_DIR)/muse: boot.o $(KERNEL_OBJS) $(DRIVER_OBJS) $(BUILD_DIR)/font.o
+$(BUILD_DIR)/muse: boot.o $(KERNEL_OBJS) $(DRIVER_OBJS)
 	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc -g
 	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/muse.sym
 	$(CPY) --strip-debug $@
 
-$(BUILD_DIR)/font.o: $(DEPS_DIR)/font.psf
-	$(CPY) -O elf32-i386 -I binary $< $@
+# $(BUILD_DIR)/font.o: $(DEPS_DIR)/font.psf
+# 	$(CPY) -O elf32-i386 -I binary $< $@
 
 -include $(ALL_DEPS)
 

@@ -11,9 +11,9 @@ struct vga_cursor {
 struct vga_cursor cursor;
 struct lock_reentrant console_lock;
 extern struct vga_framebuffer fb;
-extern struct psf_font _binary_deps_font_psf_start;
-#define CONSOLE_W (fb.width / _binary_deps_font_psf_start.width)
-#define CONSOLE_H (fb.height / _binary_deps_font_psf_start.height)
+extern const char psf_file[];
+#define CONSOLE_W (fb.width / ((struct psf_font *)psf_file)->width)
+#define CONSOLE_H (fb.height / ((struct psf_font *)psf_file)->height)
 
 void init_console(struct multiboot_tag_framebuffer *tag_fb) {
 	console_lock.cnt   = 0;
@@ -28,7 +28,7 @@ void console_put_char(char c, color_t color) {
 		if (cursor.y < CONSOLE_H - 1) {
 			cursor.y++;
 		} else {
-			scroll(_binary_deps_font_psf_start.height);
+			scroll(((struct psf_font *)psf_file)->height);
 		}
 		return;
 	}

@@ -16,12 +16,10 @@ struct mmap_entry {
 
 typedef void (*func_ptr_t)(void);
 
-#define MMAP_CNT 16
-extern struct mmap_entry mmap_table[MMAP_CNT];
-
 struct context;
 
 void memcpy(void *dst, void *src, mem_t size);
+int memcmp(const void *s1, const void *s2, size_t n);
 void *kpage_alloc(void);
 void kpage_set_status(paddr_t addr, bool free);
 void reserve_scroll(struct scroll *scr);

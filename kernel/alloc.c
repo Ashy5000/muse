@@ -2,6 +2,7 @@
 #include "context.h"
 #include "logging.h"
 #include "memory.h"
+#include "paging.h"
 
 extern struct context *active_ctx;
 
@@ -14,6 +15,10 @@ void *heap_sbrk(intptr_t inc) {
 		__asm__ volatile("cli; hlt");
 	}
 	active_ctx->ctx_heap->limit += inc;
+	if (!get_page_mapping((vaddr_t)active_ctx->ctx_heap->limit)) {
+		map_page((vaddr_t)active_ctx->ctx_heap->limit,
+		         (paddr_t)kpage_alloc());
+	}
 	return prev_lim;
 }
 

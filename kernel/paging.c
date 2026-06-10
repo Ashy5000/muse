@@ -3,6 +3,7 @@
 #include "context.h"
 #include "logging.h"
 #include "memory.h"
+#include "trampoline.h"
 
 #define LOOPBACK_DIR    ((paging_table_t)0xFFFFF000)
 #define LOOPBACK_TBL(I) ((paging_table_t)(uintptr_t)(0xFFC00000 + 0x400 * (I)))
@@ -113,8 +114,8 @@ void unmap_page(vaddr_t vaddr) {
 	__asm__ volatile("invlpg (%0)" ::"r"(vaddr) : "memory");
 }
 
-void map_page_range_inactive(uint32_t *directory, vaddr_t vaddr, paddr_t paddr,
-                             uint32_t pages) {
+void map_page_range_inactive(paging_table_t directory, vaddr_t vaddr,
+                             paddr_t paddr, uint32_t pages) {
 	for (uint32_t i = 0; i < pages; i++) {
 		map_page_inactive(directory, vaddr + (i * PAGE_SIZE),
 		                  paddr + (i * PAGE_SIZE));
@@ -157,17 +158,6 @@ paddr_t init_paging(struct scroll *scroll) {
 		                        scroll->aligned_backend.page,
 		                        scroll->size / PAGE_SIZE);
 		scroll = scroll->next;
-	}
-	for (uint32_t i = 0; i < MMAP_CNT; i++) {
-		if (!mmap_table[i].available) {
-			break;
-		}
-		uint32_t bitmap_count = ((uint32_t *)(mmap_table[i].addr))[0];
-		uint32_t pages =
-		    (bitmap_count * sizeof(uint32_t) + PAGE_SIZE - 1) /
-		    PAGE_SIZE;
-		map_page_range_inactive(directory, mmap_table[i].addr,
-		                        mmap_table[i].addr, pages);
 	}
 	directory[1023] =
 	    create_paging_entry((vaddr_t)directory, true, true, true);

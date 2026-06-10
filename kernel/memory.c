@@ -1,10 +1,11 @@
 #include "memory.h"
-#include "alloc.h"
 #include "context.h"
 #include "elf.h"
 #include "logging.h"
 #include "paging.h"
 #include "sync.h"
+#include "trampoline.h"
+#include "utils.h"
 
 #include <stdbool.h>
 
@@ -13,41 +14,42 @@ extern void *hpet_limit;
 
 extern struct context *active_ctx;
 
+extern struct trampoline_info *t_info;
+
 void memcpy(void *dst, void *src, mem_t size) {
 	for (uint32_t i = 0; i < size; i++) {
 		((char *)dst)[i] = ((char *)src)[i];
 	}
 }
 
-struct mmap_entry mmap_table[MMAP_CNT];
+int memcmp(const void *s1, const void *s2, size_t n) {
+	for (size_t i = 0; i < n; i++) {
+		unsigned char c1 = ((unsigned char *)s1)[i];
+		unsigned char c2 = ((unsigned char *)s2)[i];
+		if (c1 != c2) {
+			return c1 - c2;
+		}
+	}
+	return 0;
+}
 
 struct lock_simple bitmap_lock;
 
-uint32_t get_bitmap_count(uint32_t idx) {
-	return *((uint32_t *)mmap_table[idx].addr);
-}
-
 void *kpage_alloc() {
 	lock_simple_acquire(&bitmap_lock);
-	for (uint32_t i = 0; i < MMAP_CNT; i++) {
-		if (!mmap_table[i].available) {
-			break;
-		}
-		uint32_t num_bitmaps = get_bitmap_count(i);
-		paddr_t addr =
-		    mmap_table[i].addr + (num_bitmaps + 1) * sizeof(uint32_t);
-		addr += PAGE_SIZE - (addr % PAGE_SIZE);
-		for (uint32_t j = 0; j < num_bitmaps; j++) {
-			uint32_t *bitmap =
-			    (uint32_t *)(mmap_table[i].addr) + 1 + j;
-			for (uint32_t k = 0; k < 32; k++) {
-				if (((*bitmap >> k) & 1) == 0) {
-					*bitmap |= 1 << k;
-					lock_simple_release(&bitmap_lock);
-					return (void *)(uintptr_t)addr;
-				}
-				addr += PAGE_SIZE;
+	for (uint32_t i = 0; i < t_info->region_cnt; i++) {
+		paddr_t addr = t_info->regions[i].addr;
+		uint32_t idx = 0;
+		while (addr < t_info->regions[i].addr +
+		                  t_info->regions[i].pg_cnt * PAGE_SIZE) {
+			if ((t_info->regions[i].bitmap[idx / 8] >> (idx % 8)) ==
+			    0) {
+				t_info->regions[i].bitmap[idx / 8] |=
+				    1 << (idx % 8);
+				return (void *)addr;
 			}
+			idx++;
+			addr += PAGE_SIZE;
 		}
 	}
 	lock_simple_release(&bitmap_lock);
@@ -58,25 +60,16 @@ void *kpage_alloc() {
 
 void kpage_set_status(paddr_t addr, bool free) {
 	lock_simple_acquire(&bitmap_lock);
-	for (uint32_t i = 0; i < MMAP_CNT; i++) {
-		if (!mmap_table[i].available) {
-			break;
-		}
-		uint32_t num_bitmaps = *((uint32_t *)mmap_table[i].addr);
-		paddr_t low =
-		    mmap_table[i].addr + (num_bitmaps + 1) * sizeof(uint32_t);
-		paddr_t high = mmap_table[i].addr + mmap_table[i].size;
+	for (uint32_t i = 0; i < t_info->region_cnt; i++) {
+		paddr_t low  = t_info->regions[i].addr;
+		paddr_t high = low + t_info->regions[i].pg_cnt * PAGE_SIZE;
 		if (addr >= low && addr <= high) {
-			paddr_t offset      = addr - low;
-			uint32_t bitmap_idx = offset / (PAGE_SIZE * 32);
-			uint32_t *bitmap =
-			    (uint32_t *)(mmap_table[i].addr + 1 + bitmap_idx);
-			uint32_t bit_idx =
-			    (offset % (PAGE_SIZE * 32)) / PAGE_SIZE;
+			uint32_t idx    = (addr - low) / PAGE_SIZE;
+			uint8_t *bitmap = &t_info->regions[i].bitmap[idx / 8];
 			if (free) {
-				*bitmap &= ~(1 << bit_idx);
+				*bitmap &= ~(1 << (idx % 8));
 			} else {
-				*bitmap |= 1 << bit_idx;
+				*bitmap |= 1 << (idx % 8);
 			}
 			lock_simple_release(&bitmap_lock);
 			return;
@@ -86,46 +79,42 @@ void kpage_set_status(paddr_t addr, bool free) {
 
 struct scroll *rsvd_scrolls = 0;
 
-struct scroll kernel_scr;
-
 void reserve_scroll(struct scroll *scr) {
 	scr->next    = rsvd_scrolls;
 	rsvd_scrolls = scr;
 }
 
+#define TRAMPOLINE_ALIGNED_HEAP_SIZE (8 * PAGE_SIZE * 8)
+
 void init_memory(struct multiboot_tag_elf_sections *tag_elf) {
 	bitmap_lock.stat = 0;
 
 	// Create bitmaps at the start of each free region
-	for (uint32_t i = 0; i < MMAP_CNT; i++) {
-		if (!mmap_table[i].available) {
-			break;
+	for (uint32_t i = 0; i < t_info->region_cnt; i++) {
+		uint32_t bitmap_cnt       = t_info->regions[i].pg_cnt / 8;
+		t_info->regions[i].bitmap = (uint8_t *)t_info->limit;
+		t_info->limit += bitmap_cnt;
+		for (uint32_t j = 0; j < bitmap_cnt; j++) {
+			t_info->regions[i].bitmap[j] = 0;
 		}
-		mem_t addr            = mmap_table[i].addr + sizeof(uint32_t);
-		mem_t size            = mmap_table[i].size - sizeof(uint32_t);
-		uint32_t addr_aligned = addr - PAGE_SIZE + (addr % PAGE_SIZE);
-		uint32_t size_aligned = size - (addr - addr_aligned);
-		uint32_t max_pages    = size_aligned / PAGE_SIZE;
-
-		uint32_t bitmaps_in_entry = 0;
-		for (uint32_t j = 0; j < max_pages; j += sizeof(uint32_t) * 8) {
-			*((uint32_t *)(uintptr_t)addr + j + 1) =
-			    0; // 0 = free, 1 = used
-			bitmaps_in_entry++;
-			addr += sizeof(uint32_t);
-			size -= sizeof(uint32_t);
-			addr_aligned = addr - PAGE_SIZE + (addr % PAGE_SIZE);
-			size_aligned = size - (addr - addr_aligned);
-			max_pages    = size_aligned / PAGE_SIZE;
-		}
-
-		*((uint32_t *)mmap_table[i].addr) = bitmaps_in_entry;
-		log(LOG_INFO, LOG_MEM, "Wrote physical alloc bitmaps to %x.\n",
-		    mmap_table[i].addr);
 	}
 
-	kernel_scr = reserve_multiboot_kernel(tag_elf);
+	for (vaddr_t p = (vaddr_t)t_info; p < (vaddr_t)t_info->limit;
+	     p += PAGE_SIZE) {
+		kpage_set_status(p, false);
+	}
+
+	struct scroll kernel_scr = reserve_multiboot_kernel(tag_elf);
 	reserve_scroll(&kernel_scr);
+
+	struct scroll t_info_scr;
+	t_info_scr.type                 = SCROLL_ALIGNED;
+	t_info_scr.vaddr                = (vaddr_t)t_info;
+	t_info_scr.aligned_backend.page = (paddr_t)t_info;
+	t_info_scr.size =
+	    ALIGN_PG_UP((vaddr_t)(t_info->limit - (void *)t_info));
+
+	reserve_scroll(&t_info_scr);
 
 	// Intialize paging
 	active_ctx->page_directory = init_paging(rsvd_scrolls);
@@ -141,4 +130,14 @@ void init_memory(struct multiboot_tag_elf_sections *tag_elf) {
 	//     sizeof(uint32_t) *
 	// 	(1 + *((uint32_t *)(vaddr_t)mmap_table[0].addr))));
 	// init_heap(&heap_temp);
+
+	struct heap heap_temp;
+	heap_temp.aligned_start = (void *)ALIGN_PG_UP(t_info->limit);
+	heap_temp.bitmap_cnt    = TRAMPOLINE_ALIGNED_HEAP_SIZE / PAGE_SIZE / 8;
+	heap_temp.max_limit     = (void *)kernel_scr.vaddr;
+	heap_temp.limit =
+	    heap_temp.aligned_start + TRAMPOLINE_ALIGNED_HEAP_SIZE;
+	init_heap(&heap_temp);
+
+	log(LOG_INFO, LOG_MEM, "Trampoline memory initialization complete.\n");
 }

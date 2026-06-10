@@ -1,14 +1,18 @@
+#include "trampoline.h"
 #include "../drivers/text.h"
 #include "acpi.h"
 #include "apic.h"
+#include "ata.h"
 #include "interrupts.h"
-#include "io.h"
 #include "logging.h"
 #include "memory.h"
 #include "multiboot.h"
+#include "paging.h"
+#include "pci.h"
 #include "pic.h"
 
-extern struct mmap_entry mmap_table[MMAP_CNT];
+/* The trampoline_info structure is located at the very start of memory. */
+struct trampoline_info *t_info = 0;
 
 void trampoline_main(void *multiboot, uint32_t magic) {
 	if (magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
@@ -27,10 +31,6 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 	}
 	init_console(tag_fb);
 
-	for (unsigned int i = 0; i < MMAP_CNT; i++) {
-		mmap_table[i].available = false;
-	}
-
 	struct multiboot_tag_mmap *tag_mmap =
 	    (struct multiboot_tag_mmap *)multiboot_find_tag(
 		multiboot, MULTIBOOT_TAG_TYPE_MMAP);
@@ -42,17 +42,17 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 
 	struct multiboot_mmap_entry *entry =
 	    (struct multiboot_mmap_entry *)(uintptr_t)tag_mmap->entries;
-	uint32_t table_idx = 0;
+	t_info->limit      = (void *)t_info + sizeof(*t_info);
+	t_info->region_cnt = 0;
 	while ((void *)entry < (void *)tag_mmap + tag_mmap->size) {
 		log(LOG_INFO, LOG_MEM,
-		    "CHUNK FOUND - Addr: %x | Size: %x | Type: %i\n",
-		    entry->addr, entry->len, entry->type);
+		    "CHUNK FOUND - Addr: %x | Size: %x | Type: %i.\n",
+		    (uint32_t)entry->addr, (uint32_t)entry->len, entry->type);
 		if (entry->type == MULTIBOOT_MEMORY_AVAILABLE) {
-			mmap_table[table_idx].available = true;
-			mmap_table[table_idx].addr      = entry->addr;
-			mmap_table[table_idx].size      = entry->len;
-			table_idx++;
-			if (table_idx == MMAP_CNT) {
+			t_info->regions[t_info->region_cnt].addr = entry->addr;
+			t_info->regions[t_info->region_cnt].pg_cnt =
+			    entry->len / PAGE_SIZE;
+			if (t_info->region_cnt++ == MMAP_CNT) {
 				break;
 			}
 		}
@@ -82,7 +82,11 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 	if (!tag_elf) {
 		log(LOG_ERROR, LOG_KERNEL, "No ELF tag found!\n");
 	}
-	// init_memory(tag_elf);
+
+	init_memory(tag_elf);
+
+	register_ata();
+	init_pci();
 
 	for (;;) {
 		__asm__("hlt");

@@ -2,11 +2,13 @@
 
 #define PSF_MAGIC 0x864AB572
 
-extern struct psf_font _binary_deps_font_psf_start;
+const char psf_file[] = {
+#embed "../deps/font.psf"
+};
 
 void psf_put_char(unsigned char c, unsigned int x_c, unsigned int y_c,
                   color_t color) {
-	struct psf_font *font = &_binary_deps_font_psf_start;
+	struct psf_font *font = (struct psf_font *)psf_file;
 	if (font->flags || font->magic != PSF_MAGIC) {
 		return; /* We don't support Unicode. */
 	}

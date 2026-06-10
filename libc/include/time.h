@@ -1,6 +1,6 @@
 #ifndef _TIME_H
 #define _TIME_H
 
-#include "size_t.h"
+#include <muse/size_t.h>
 
 #endif

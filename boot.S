@@ -113,14 +113,22 @@ _start:
 	mov $stack_top, %esp
 	push %eax
 	push %ebx
-	cli
 	lea tss, %eax
 	mov %ax, [tss_base_0]
 	shr $16, %eax
 	mov %al, [tss_base_1]
 	shr $8, %eax
 	mov %al, [tss_base_2]
+	cli
 	lgdt [gdt_descriptor]
+	ljmp $0x8, $gdt_done
+gdt_done:
+	mov $0x10, %eax
+	mov %eax, %ds
+	mov %eax, %es
+	mov %eax, %fs
+	mov %eax, %gs
+	mov %eax, %ss
 	call trampoline_main
 
 .size _start, . - _start

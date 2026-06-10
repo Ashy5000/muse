@@ -2,7 +2,7 @@
 #define _STRING_H
 
 #include <stddef.h>
-#include "size_t.h"
+#include <muse/size_t.h>
 
 #ifdef __cplusplus
 extern "C" {

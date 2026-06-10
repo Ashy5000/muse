@@ -1,7 +1,7 @@
 #ifndef _STDLIB_H
 #define _STDLIB_H
 
-#include "size_t.h"
+#include <muse/size_t.h>
 
 #ifdef __cplusplus
 extern "C" {

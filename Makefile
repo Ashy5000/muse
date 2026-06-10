@@ -1,13 +1,14 @@
 BUILD_DIR = build
-KERNEL_SRC = kernel
-DRIVER_SRC = drivers
+KERNEL_SRC = src/kernel
+TRAMPOLINE_SRC = src/trampoline
+COMMON_SRC = src/common
 LIBC_SRC = libc/lib
 RUNTIME_SRC = libc/runtime
 LIB_DIR = fs/usr/lib
 LIBC_INCLUDE = libc/include
 INCLUDE_DIR = fs/usr/include
 LIBC_PATH = $(LIB_DIR)/libc.a
-SRC_DIRS = $(KERNEL_SRC) $(DRIVER_SRC) $(LIBC_SRC)
+SRC_DIRS = $(KERNEL_SRC) $(LIBC_SRC)
 DEPS_DIR = deps
 
 CROSS_ROOT = $(HOME)/opt/cross/bin
@@ -19,27 +20,30 @@ CPY = $(CROSS_ROOT)/i686-muse-objcopy
 CFLAGS = -Wall -Wextra -Werror -O0
 
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
-DRIVER_C_SOURCES = $(wildcard $(DRIVER_SRC)/*.c)
+TRAMPOLINE_C_SOURCES = $(wildcard $(TRAMPOLINE_SRC)/*.c)
+COMMON_C_SOURCES = $(wildcard $(COMMON_SRC)/*.c)
 LIBC_C_SOURCES = $(wildcard $(LIBC_SRC)/*.c)
-ALL_SRC = $(KERNEL_C_SOURCES) $(DRIVER_C_SOURCES) $(KERNEL_ASM_SOURCES) $(DRIVER_ASM_SOURCES) $(LIBC_C_SOURCES) $(LIBC_ASM_SOURCES) $(RUNTIME_ASM_SOURCES)
+ALL_SRC = $(KERNEL_C_SOURCES) $(KERNEL_ASM_SOURCES) $(LIBC_C_SOURCES) $(LIBC_ASM_SOURCES) $(RUNTIME_ASM_SOURCES)
 
 KERNEL_ASM_SOURCES = $(wildcard $(KERNEL_SRC)/*.asm)
-DRIVER_ASM_SOURCES = $(wildcard $(DRIVER_SRC)/*.asm)
+COMMON_ASM_SOURCES = $(wildcard $(COMMON_SRC)/*.asm)
 LIBC_ASM_SOURCES = $(wildcard $(LIBC_SRC)/*.asm)
 RUNTIME_ASM_SOURCES = $(wildcard $(RUNTIME_SRC)/*.asm)
 
 KERNEL_DEPS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.d, $(KERNEL_C_SOURCES))
-DRIVER_DEPS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.d, $(DRIVER_C_SOURCES))
+TRAMPOLINE_DEPS = $(patsubst $(TRAMPOLINE_SRC)/%.c, $(BUILD_DIR)/$(TRAMPOLINE_SRC)/%.d, $(KERNEL_C_SOURCES))
+COMMON_DEPS = $(patsubst $(COMMON_SRC)/%.c, $(BUILD_DIR)/$(COMMON_SRC)/%.d, $(KERNEL_C_SOURCES))
 LIBC_DEPS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.d, $(LIBC_C_SOURCES))
-ALL_DEPS = $(KERNEL_DEPS) $(DRIVER_DEPS) $(LIBC_DEPS)
+ALL_DEPS = $(KERNEL_DEPS) $(LIBC_DEPS)
 
 KERNEL_OBJS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_C_SOURCES)) $(patsubst $(KERNEL_SRC)/%.asm, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_ASM_SOURCES))
-DRIVER_OBJS = $(patsubst $(DRIVER_SRC)/%.c, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_C_SOURCES)) $(patsubst $(DRIVER_SRC)/%.asm, $(BUILD_DIR)/$(DRIVER_SRC)/%.o, $(DRIVER_ASM_SOURCES))
+TRAMPOLINE_OBJS = $(patsubst $(TRAMPOLINE_SRC)/%.c, $(BUILD_DIR)/$(TRAMPOLINE_SRC)/%.o, $(TRAMPOLINE_C_SOURCES))
+COMMON_OBJS = $(patsubst $(COMMON_SRC)/%.c, $(BUILD_DIR)/$(COMMON_SRC)/%.o, $(COMMON_C_SOURCES)) $(patsubst $(COMMON_SRC)/%.asm, $(BUILD_DIR)/$(COMMON_SRC)/%.o, $(COMMON_ASM_SOURCES))
 LIBC_OBJS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_C_SOURCES)) $(patsubst $(LIBC_SRC)/%.asm, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_ASM_SOURCES))
 RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SOURCES))
 
 define compile-c =
-$(CC) $(CFLAGS) -ffreestanding -MMD -MP -c $< -o $@ -g
+$(CC) $(CFLAGS) -ffreestanding -MMD -MP -c $< -o $@ -g -Iinclude
 endef
 
 define compile-usr-c =
@@ -97,13 +101,10 @@ $(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
 $(BUILD_DIR)/BOOTIA32.EFI:
 	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot2 configfile all_video
 
-$(BUILD_DIR)/muse: boot.o $(KERNEL_OBJS) $(DRIVER_OBJS)
-	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc -g
+$(BUILD_DIR)/muse: boot.o $(TRAMPOLINE_OBJS) $(COMMON_OBJS)
+	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc -g -Iinclude
 	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/muse.sym
 	$(CPY) --strip-debug $@
-
-# $(BUILD_DIR)/font.o: $(DEPS_DIR)/font.psf
-# 	$(CPY) -O elf32-i386 -I binary $< $@
 
 -include $(ALL_DEPS)
 

@@ -1,8 +1,9 @@
-#include <muse/syscall.h>
 #include <muse/alloc.h>
 #include <muse/context.h>
 #include <muse/logging.h>
 #include <muse/paging.h>
+#include <muse/scheduler.h>
+#include <muse/syscall.h>
 #include <muse/userspace.h>
 #include <muse/vfs.h>
 

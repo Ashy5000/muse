@@ -1,7 +1,7 @@
-#include <muse/memory.h>
 #include <muse/context.h>
 #include <muse/elf.h>
 #include <muse/logging.h>
+#include <muse/memory.h>
 #include <muse/paging.h>
 #include <muse/sync.h>
 #include <muse/trampoline.h>
@@ -118,18 +118,6 @@ void init_memory(struct multiboot_tag_elf_sections *tag_elf) {
 
 	// Intialize paging
 	active_ctx->page_directory = init_paging(rsvd_scrolls);
-
-	/* All of this is completely arbitrary. This might be the worst-written
-	 * piece of code in the entire OS. FIXME!!!!*/
-	// struct heap heap_temp;
-	// heap_temp.limit         = (void *)0x10000;
-	// heap_temp.max_limit     = (void *)0x90000;
-	// heap_temp.bitmap_cnt    = 10;
-	// heap_temp.aligned_start = (void *)(ALIGN_PG_UP(
-	//     mmap_table[0].addr +
-	//     sizeof(uint32_t) *
-	// 	(1 + *((uint32_t *)(vaddr_t)mmap_table[0].addr))));
-	// init_heap(&heap_temp);
 
 	struct heap heap_temp;
 	heap_temp.aligned_start = (void *)ALIGN_PG_UP(t_info->limit);

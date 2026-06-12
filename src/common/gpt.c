@@ -19,7 +19,12 @@ bool init_gpt(struct hal_drive *dev) {
 	partition_raw.start             = 0;
 	partition_raw.limit             = -1;
 	struct gpt_table_header *header = kmalloc(SECTOR_SIZE);
-	if (dev->transfer(&partition_raw, 1, 1, header, DIR_READ)) {
+	enum hal_drive_res err =
+	    dev->transfer(&partition_raw, 1, 1, header, DIR_READ);
+	if (err) {
+		log(LOG_ERROR, LOG_GPT,
+		    "Failed to transfer GPT header from drive: %s.\n",
+		    hal_drive_errs[err]);
 		return false;
 	}
 	if (memcmp(header->signature, "EFI PART", 8)) {

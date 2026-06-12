@@ -2,6 +2,7 @@
 #include <muse/interrupts.h>
 #include <muse/keyboard.h>
 #include <muse/logging.h>
+#include <muse/scheduler.h>
 #include <muse/syscall.h>
 #include <stdbool.h>
 

@@ -1,6 +1,6 @@
-#include <muse/pci.h>
 #include <muse/io.h>
 #include <muse/logging.h>
+#include <muse/pci.h>
 #include <stdbool.h>
 
 #define CONFIG_ADDR 0xCF8
@@ -14,37 +14,21 @@ uint32_t pci_config_read(uint8_t bus, uint8_t slot, uint8_t func,
 	return inl(CONFIG_DATA);
 }
 
-uint16_t get_vendor_id(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x0);
-}
+#define get_vendor_id(B, S, F) pci_config_read(B, S, F, 0x0);
 
-uint16_t get_device_id(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x0) >> 16;
-}
+#define get_device_id(B, S, F) (pci_config_read(B, S, F, 0x0) >> 16);
 
-uint8_t get_header_type(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0xC) >> 16;
-}
+#define get_header_type(B, S, F) (pci_config_read(B, S, F, 0xC) >> 16)
 
-uint8_t get_class(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x8) >> 24;
-}
+#define get_class(B, S, F) (pci_config_read(B, S, F, 0x8) >> 24)
 
-uint8_t get_subclass(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x8) >> 16;
-}
+#define get_subclass(B, S, F) (pci_config_read(bus, slot, func, 0x8) >> 16)
 
-uint8_t get_prog_if(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x8) >> 8;
-}
+#define get_prog_if(B, S, F) (pci_config_read(B, S, F, 0x8) >> 8)
 
-uint8_t get_revision(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x8);
-}
+#define get_revision(B, S, F) pci_config_read(B, S, F, 0x8)
 
-uint8_t get_secondary_bus(uint8_t bus, uint8_t slot, uint8_t func) {
-	return pci_config_read(bus, slot, func, 0x18) >> 8;
-}
+#define get_secondary_bus(B, S, F) (pci_config_read(B, S, F, 0x18) >> 18)
 
 struct pci_bar get_bar(uint8_t bus, uint8_t slot, uint8_t func, uint8_t idx) {
 	struct pci_bar bar;
@@ -62,8 +46,8 @@ struct pci_bar get_bar(uint8_t bus, uint8_t slot, uint8_t func, uint8_t idx) {
 	return bar;
 }
 
-struct pci_handler *first_handler;
-struct pci_handler *last_handler;
+struct pci_handler *first_handler = 0;
+struct pci_handler *last_handler  = 0;
 
 void pci_register_handler(struct pci_handler *handler) {
 	handler->next = 0;
@@ -90,42 +74,39 @@ void init_function(struct pci_func fn) {
 struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 	struct pci_func res;
 	uint16_t vendor = get_vendor_id(bus, slot, func);
+	res.vendor      = vendor;
 	if (vendor == 0xFFFF) {
 		return res;
-	} else {
-		res.vendor         = vendor;
-		res.class_code     = get_class(bus, slot, func);
-		res.subclass_code  = get_subclass(bus, slot, func);
-		res.prog_if        = get_prog_if(bus, slot, func);
-		res.type           = get_header_type(bus, slot, func);
-		res.multi_function = false;
-		if ((res.type & 0x80) != 0) {
-			res.multi_function = true;
-			res.type &= ~0x80;
-		}
-		if (res.type == 0x0) {
-			for (uint32_t i = 0; i < 6; i++) {
-				res.bars[i] = get_bar(bus, slot, func, i);
-			}
-		}
-		if (res.type == 0x1) { // PCI-PCI bridge
-			uint8_t secondary_bus =
-			    get_secondary_bus(bus, slot, func);
-			log(LOG_INFO, LOG_PCI,
-			    "Found PCI-PCI bridge to bus %x.\n",
-			    (uint32_t)secondary_bus);
-			scan_pci_bus(secondary_bus);
-			for (uint32_t i = 0; i < 2; i++) {
-				res.bars[i] = get_bar(bus, slot, func, i);
-			}
-		}
-		log(LOG_INFO, LOG_PCI,
-		    "Found function with vendor %x and class %x:%x.\n",
-		    (uint32_t)res.vendor, (uint32_t)res.class_code,
-		    (uint32_t)res.subclass_code);
-		init_function(res);
-		return res;
 	}
+	res.class_code     = get_class(bus, slot, func);
+	res.subclass_code  = get_subclass(bus, slot, func);
+	res.prog_if        = get_prog_if(bus, slot, func);
+	res.type           = get_header_type(bus, slot, func);
+	res.multi_function = false;
+	if ((res.type & 0x80) != 0) {
+		res.multi_function = true;
+		res.type &= ~0x80;
+	}
+	if (res.type == 0x0) {
+		for (uint32_t i = 0; i < 6; i++) {
+			res.bars[i] = get_bar(bus, slot, func, i);
+		}
+	}
+	if (res.type == 0x1) { // PCI-PCI bridge
+		uint8_t secondary_bus = get_secondary_bus(bus, slot, func);
+		log(LOG_INFO, LOG_PCI, "Found PCI-PCI bridge to bus %x.\n",
+		    (uint32_t)secondary_bus);
+		scan_pci_bus(secondary_bus);
+		for (uint32_t i = 0; i < 2; i++) {
+			res.bars[i] = get_bar(bus, slot, func, i);
+		}
+	}
+	log(LOG_INFO, LOG_PCI,
+	    "Found function with vendor %x and class %x:%x.\n",
+	    (uint32_t)res.vendor, (uint32_t)res.class_code,
+	    (uint32_t)res.subclass_code);
+	init_function(res);
+	return res;
 }
 
 struct pci_dev scan_pci_dev(uint8_t bus, uint8_t slot) {

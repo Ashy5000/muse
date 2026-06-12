@@ -1,6 +1,6 @@
 #include <muse/acpi.h>
+#include <muse/apic.h>
 #include <muse/logging.h>
-#include <stdbool.h>
 
 __attribute__((nonstring)) char rsdp_signature[8] = "RSD PTR ";
 

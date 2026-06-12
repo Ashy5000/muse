@@ -1,7 +1,8 @@
-#include <muse/userspace.h>
 #include <muse/context.h>
 #include <muse/paging.h>
+#include <muse/scheduler.h>
 #include <muse/sync.h>
+#include <muse/userspace.h>
 
 extern struct context *active_ctx;
 

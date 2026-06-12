@@ -1,7 +1,8 @@
-#include <muse/ata.h>
 #include <muse/alloc.h>
+#include <muse/ata.h>
 #include <muse/hal.h>
 #include <muse/io.h>
+#include <muse/logging.h>
 #include <muse/pci.h>
 #include <stdbool.h>
 
@@ -221,6 +222,8 @@ void detect_drive(uint16_t bus, uint8_t drive) {
 	outb(bus + ATA_CTRL_REG_CTRL,
 	     inb(bus + ATA_CTRL_REG_CTRL) | ATA_FLAG_NIEN);
 
+	log(LOG_INFO, LOG_ATA, "Detected ATA drive at %x:%x.\n", bus, drive);
+
 	init_gpt(hdev);
 
 	return;
@@ -235,6 +238,7 @@ void detect_bus(uint16_t bus) {
 }
 
 void init_ata(struct pci_func pci_fn) {
+	log(LOG_INFO, LOG_ATA, "Initializing ATA drives.\n");
 	// Skip buses in PCI native mode (not supported yet)
 	if ((pci_fn.prog_if & 1) == 0) {
 		detect_bus(ATA_BUS_PRIMARY);
@@ -246,7 +250,7 @@ void init_ata(struct pci_func pci_fn) {
 
 void register_ata() {
 	struct pci_handler *handler =
-	    (struct pci_handler *)kmalloc(sizeof(struct pci_handler));
+	    (struct pci_handler *)kmalloc(sizeof(*handler));
 	// Initialize ATA when the IDE controller is found during PCI
 	// enumeration
 	handler->class_code    = 0x1; // Mass storage controller

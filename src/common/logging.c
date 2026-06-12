@@ -47,6 +47,9 @@ void vlog(enum log_level level, enum log_class lclass, const char *fmt,
 	case LOG_APIC:
 		kprintf("apic: ");
 		break;
+	case LOG_ATA:
+		kprintf("ata: ");
+		break;
 	case LOG_EXCEPTION:
 		kprintf("exception: ");
 		break;

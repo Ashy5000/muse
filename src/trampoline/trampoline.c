@@ -2,33 +2,38 @@
 
 #include <muse/acpi.h>
 #include <muse/ata.h>
+#include <muse/context.h>
+#include <muse/elf_kernel.h>
 #include <muse/logging.h>
 #include <muse/memory.h>
 #include <muse/multiboot.h>
 #include <muse/paging.h>
 #include <muse/pci.h>
+#include <muse/scheduler.h>
 #include <muse/text.h>
 #include <muse/trampoline.h>
 
 /* The trampoline_info structure is located at the very start of memory. */
-struct trampoline_info *t_info = 0;
+struct trampoline_info *t_info = (struct trampoline_info *)0x0;
 
 void trampoline_main(void *multiboot, uint32_t magic) {
 	if (magic != MULTIBOOT2_BOOTLOADER_MAGIC) {
 		__asm__ volatile("hlt");
 	}
 
-	log(LOG_INFO, LOG_KERNEL, "Multiboot info struct located at %x.\n",
-	    multiboot);
+	init_first_ctx();
 
 	struct multiboot_tag_framebuffer *tag_fb =
 	    (struct multiboot_tag_framebuffer *)multiboot_find_tag(
 		multiboot, MULTIBOOT_TAG_TYPE_FRAMEBUFFER);
 	if (!tag_fb) {
-		log(LOG_ERROR, LOG_KERNEL, "Framebuffer tag not present!\n");
 		__asm__ volatile("hlt");
 	}
+
 	init_console(tag_fb);
+
+	log(LOG_INFO, LOG_KERNEL, "Multiboot info struct located at %x.\n",
+	    multiboot);
 
 	struct multiboot_tag_mmap *tag_mmap =
 	    (struct multiboot_tag_mmap *)multiboot_find_tag(
@@ -83,7 +88,10 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 	register_ata();
 	init_pci();
 
+	load_elf_kernel("/ext2/bin/muse");
+	terminate();
+
 	for (;;) {
-		__asm__("hlt");
+		__asm__ volatile("hlt");
 	}
 }

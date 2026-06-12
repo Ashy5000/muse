@@ -2,6 +2,7 @@
 #define ELF_H
 
 #include <muse/hal.h>
+#include <muse/int_types.h>
 #include <muse/multiboot.h>
 #include <muse/vfs.h>
 #include <stdint.h>
@@ -52,11 +53,16 @@ struct elf_section_header {
 	uint32_t sh_entsize;
 };
 
-void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
-              struct vfs_inode *stdout, struct vfs_inode *stderr, bool user);
-#define load_elf_user(P, AC, AV, IN, OUT, ERR)                                 \
-	load_elf(P, AC, AV, IN, OUT, ERR, true)
-#define load_elf_kernel(P) load_elf(P, 0, 0, 0, 0, 0, false)
+struct elf_info {
+	bool present;
+	struct scroll *first_scr;
+	vaddr_t limit;
+	struct elf_header *header;
+	void *contents;
+};
+
+struct elf_info parse_elf(char *path);
+void load_elf_data(struct elf_info elf);
 
 struct scroll
 reserve_multiboot_kernel(struct multiboot_tag_elf_sections *tag_elf);

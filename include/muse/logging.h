@@ -14,6 +14,7 @@ enum log_class {
 	LOG_ACPI,
 	LOG_ALLOC,
 	LOG_APIC,
+	LOG_ATA,
 	LOG_EXCEPTION,
 	LOG_EXT2,
 	LOG_KERNEL,

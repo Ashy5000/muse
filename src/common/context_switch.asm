@@ -10,7 +10,7 @@ context_switch:
 	movl (active_ctx),%esi
 	movl %esp,(%esi)
 
-	movl 20(%esp),%edi
+	movl 16(%esi),%edi
 	movl %edi,(active_ctx)
 	movl (%edi),%esp
 	movl 4(%edi),%eax

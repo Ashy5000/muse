@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-void init_scheduler(void);
 void lock_scheduler(void);
 void unlock_scheduler(void);
 void schedule(void);

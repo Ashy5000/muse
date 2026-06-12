@@ -10,7 +10,7 @@
 #define MIN_CHUNK_SIZE_LOG 4
 #define MIN_CHUNK_SIZE     (1 << MIN_CHUNK_SIZE_LOG)
 #define TIER_IDX(X) ((31 - __builtin_clz((uintptr_t)X)) - MIN_CHUNK_SIZE_LOG)
-#define CHUNK_SIZE_LIMIT_LOG 15
+#define CHUNK_SIZE_LIMIT_LOG 25
 #define TIER_CNT             CHUNK_SIZE_LIMIT_LOG - MIN_CHUNK_SIZE_LOG
 #define CHUNK_OVERHEAD       (2 * sizeof(size_t))
 #define BIT_FREE             1

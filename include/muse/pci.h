@@ -1,6 +1,7 @@
 #ifndef PCI_H
 #define PCI_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 enum pci_bar_type {

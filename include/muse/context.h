@@ -33,8 +33,9 @@ void create_context(func_ptr_t func_ptr, uint8_t priority, bool user,
                     struct vfs_inode *stderr);
 void create_kernel_context(func_ptr_t func_ptr, struct scroll *first_scr);
 void context_switch(struct context *ctx_new);
+void init_first_ctx();
 
-#define TASK_STACK_BASE 0xFFFFF000
+#define TASK_STACK_BASE 0xFF8FFFFF /* Last table is for loopback */
 #define TASK_STACK_SIZE PAGE_SIZE
 #define USER_STACK_BASE 0x1FFFFF
 #define USER_STACK_SIZE PAGE_SIZE

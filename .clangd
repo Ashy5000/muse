@@ -1,6 +1,6 @@
 CompileFlags:
   Add:
-    - "-Iinclude"
+    - "-I/home/ashy5000/dev/os/include/"
     - "-Wall"
     - "-Wextra"
     - "-Werror"

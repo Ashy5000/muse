@@ -2,6 +2,7 @@
 #include <muse/context.h>
 #include <muse/elf.h>
 #include <muse/logging.h>
+#include <muse/scheduler.h>
 #include <muse/scroll.h>
 #include <muse/userspace.h>
 #include <muse/utils.h>
@@ -9,40 +10,37 @@
 
 #define PT_LOAD 1
 
-#ifdef KERNEL
-void load_elf(char *path, uint32_t argc, char **argv, struct vfs_inode *stdin,
-              struct vfs_inode *stdout, struct vfs_inode *stderr, bool user) {
-#else
-void load_elf(char *path, __attribute__((unused)) uint32_t argc,
-              __attribute__((unused)) char **argv,
-              __attribute__((unused)) struct vfs_inode *stdin,
-              __attribute__((unused)) struct vfs_inode *stdout,
-              __attribute__((unused)) struct vfs_inode *stderr, bool user) {
-#endif
+struct elf_info parse_elf(char *path) {
+	struct elf_info res;
+	res.present            = false;
 	struct vfs_inode *file = vfs_open(path);
 	if (!file) {
-		return;
+		return res;
 	}
 	uint32_t file_size = file->size;
-	void *contents     = kmalloc(file_size);
-	if (file->transfer(file, 0, file_size, contents, DIR_READ) !=
+	res.contents       = kmalloc(file_size);
+	if (file->transfer(file, 0, file_size, res.contents, DIR_READ) !=
 	    file_size) {
-		kfree(contents);
-		return;
+		kfree(res.contents);
+		return res;
 	}
-	struct elf_header *header  = contents;
-	struct scroll *first_scr   = 0;
+	res.present                = true;
+	res.header                 = res.contents;
+	res.first_scr              = 0;
 	struct scroll *current_scr = 0;
-	vaddr_t limit              = 0;
-	for (uint32_t offset = header->program_table_offset;
-	     offset <
-	     header->program_table_offset + (header->program_table_length *
-	                                     header->program_table_entry_size);
-	     offset += header->program_table_entry_size) {
-		struct elf_program_header *prog_header = contents + offset;
+	res.limit                  = 0;
+	for (uint32_t offset = res.header->program_table_offset;
+	     offset < res.header->program_table_offset +
+	                  (res.header->program_table_length *
+	                   res.header->program_table_entry_size);
+	     offset += res.header->program_table_entry_size) {
+		struct elf_program_header *prog_header = res.contents + offset;
 		if (prog_header->type != PT_LOAD) {
 			continue;
 		}
+		log(LOG_INFO, LOG_MEM, "Elf section: %x->%x.\n",
+		    prog_header->p_vaddr,
+		    prog_header->p_vaddr + prog_header->p_memsz);
 		uint32_t first_page =
 		    prog_header->p_vaddr - (prog_header->p_vaddr % PAGE_SIZE);
 		uint32_t vaddr_end =
@@ -50,13 +48,13 @@ void load_elf(char *path, __attribute__((unused)) uint32_t argc,
 		uint32_t limit_page =
 		    vaddr_end + PAGE_SIZE - (vaddr_end % PAGE_SIZE);
 		for (uint32_t p = first_page; p < limit_page; p += PAGE_SIZE) {
-			if (first_scr) {
+			if (res.first_scr) {
 				current_scr->next =
 				    kmalloc(sizeof(struct scroll));
 				current_scr = current_scr->next;
 			} else {
-				first_scr   = kmalloc(sizeof(struct scroll));
-				current_scr = first_scr;
+				res.first_scr = kmalloc(sizeof(struct scroll));
+				current_scr   = res.first_scr;
 			}
 			current_scr->vaddr = p;
 			current_scr->type  = SCROLL_ALIGNED;
@@ -65,30 +63,22 @@ void load_elf(char *path, __attribute__((unused)) uint32_t argc,
 			current_scr->size = PAGE_SIZE;
 			current_scr->next = 0;
 		}
-		if (limit_page > limit) {
-			limit = limit_page;
+		if (limit_page > res.limit) {
+			res.limit = limit_page;
 		}
 	}
-	if (user) {
-#ifdef KERNEL
-		lock_scheduler();
-		load_user_call_info((func_ptr_t)(uintptr_t)header->entry_point,
-		                    argc, argv);
-		create_context(enter_ring3, 1, true, first_scr, limit, stdin,
-		               stdout, stderr);
-#endif
-	} else {
-		create_kernel_context(
-		    (func_ptr_t)(uintptr_t)header->entry_point, first_scr);
-	}
-	uint8_t *data = kmalloc_aligned();
-	current_scr   = first_scr;
-	for (uint32_t offset = header->program_table_offset;
-	     offset <
-	     header->program_table_offset + (header->program_table_length *
-	                                     header->program_table_entry_size);
-	     offset += header->program_table_entry_size) {
-		struct elf_program_header *prog_header = contents + offset;
+	return res;
+}
+
+void load_elf_data(struct elf_info elf) {
+	uint8_t *data              = kmalloc_aligned();
+	struct scroll *current_scr = elf.first_scr;
+	for (uint32_t offset = elf.header->program_table_offset;
+	     offset < elf.header->program_table_offset +
+	                  (elf.header->program_table_length *
+	                   elf.header->program_table_entry_size);
+	     offset += elf.header->program_table_entry_size) {
+		struct elf_program_header *prog_header = elf.contents + offset;
 		if (prog_header->type != PT_LOAD) {
 			continue;
 		}
@@ -108,7 +98,7 @@ void load_elf(char *path, __attribute__((unused)) uint32_t argc,
 			           prog_header->p_filesz &&
 			       data_offset < PAGE_SIZE) {
 				data[data_offset] =
-				    ((uint8_t *)contents)[file_offset];
+				    ((uint8_t *)elf.contents)[file_offset];
 				data_offset++;
 				file_offset++;
 			}
@@ -124,13 +114,8 @@ void load_elf(char *path, __attribute__((unused)) uint32_t argc,
 		}
 	}
 	unmap_page((uintptr_t)data);
-	kfree(contents);
+	kfree(elf.contents);
 	kfree(data);
-	if (user) {
-#ifdef KERNEL
-		unlock_scheduler();
-#endif
-	}
 }
 
 struct scroll

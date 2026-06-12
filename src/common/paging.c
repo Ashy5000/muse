@@ -12,7 +12,7 @@
 #define PAGING_BIT_WRITEABLE 2
 #define PAGING_BIT_USER      4
 
-#define MANUSCRIPT_BIND (1 << 6)
+#define MANUSCRIPT_BIND (1 << 10)
 
 #define PG_DIR_IDX(X) ((X) >> 22)
 #define PG_TBL_IDX(X) (((X) >> 12) & TEN_BITS)
@@ -282,21 +282,27 @@ paddr_t create_kernel_directory(func_ptr_t func_ptr, struct scroll *scr) {
 	paging_table_t directory_virt =
 	    (uint32_t *)(uintptr_t)directory_scr.vaddr;
 
-	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t); i++) {
+	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t) / 2; i++) {
+		directory_virt[i] = LOOPBACK_DIR[i];
+	}
+	for (uint32_t i = PAGE_SIZE / sizeof(uint32_t) / 2;
+	     i < PAGE_SIZE / sizeof(uint32_t); i++) {
 		directory_virt[i] = 0;
 	}
 
 	struct scroll stack_scr = kmalloc_page();
-	// Fill the kernel stack
-	uint32_t *stack = (uint32_t *)(uintptr_t)(stack_scr.vaddr + PAGE_SIZE);
-	stack[-1]       = (uintptr_t)func_ptr;
-	stack[-2]       = 0;               // EBX
-	stack[-3]       = 0;               // ESI
-	stack[-4]       = 0;               // EDI
-	stack[-5]       = TASK_STACK_BASE; // EBP
+	/* Fill the new stack. */
+	uint32_t *stack =
+	    (uint32_t *)(uintptr_t)(stack_scr.vaddr +
+	                            (TASK_STACK_BASE % PAGE_SIZE));
+	stack[-1] = (uintptr_t)func_ptr;
+	stack[-2] = 0;               // EBX
+	stack[-3] = 0;               // ESI
+	stack[-4] = 0;               // EDI
+	stack[-5] = TASK_STACK_BASE; // EBP
 	unmap_page(stack_scr.vaddr);
 	kfree((void *)stack_scr.vaddr);
-	stack_scr.vaddr = TASK_STACK_BASE;
+	stack_scr.vaddr = ALIGN_PG_DOWN(TASK_STACK_BASE);
 	stack_scr.next  = scr;
 	scr             = &stack_scr;
 
@@ -324,6 +330,8 @@ paddr_t create_kernel_directory(func_ptr_t func_ptr, struct scroll *scr) {
 	}
 
 	bind_manuscript(directory_virt);
+
+	scroll_unmap(directory_scr);
 
 	return directory_scr.aligned_backend.page;
 }

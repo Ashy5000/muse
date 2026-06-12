@@ -83,9 +83,11 @@ $(BUILD_DIR)/disk.img: $(BUILD_DIR)/esp.img $(BUILD_DIR)/rootfs.img
 	dd if=$(BUILD_DIR)/esp.img of=$@ bs=512 seek=2048 conv=notrunc
 	dd if=$(BUILD_DIR)/rootfs.img of=$@ bs=512 seek=133120 conv=notrunc
 
-$(BUILD_DIR)/rootfs.img:
+$(BUILD_DIR)/rootfs.img: fs/bin/muse
 	truncate -s 64M $@
 	mke2fs -t ext2 -F $@
+	e2mkdir $@:/bin
+	e2cp $< $@:/bin
 
 $(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
 	truncate -s 64M $@
@@ -102,8 +104,13 @@ $(BUILD_DIR)/BOOTIA32.EFI:
 	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot2 configfile all_video
 
 $(BUILD_DIR)/muse: boot.o $(TRAMPOLINE_OBJS) $(COMMON_OBJS)
-	$(CC) -T linker.ld -o $@ -ffreestanding -O1 -nostdlib $^ -lgcc -g -Iinclude
-	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/muse.sym
+	$(CC) -T linker/trampoline.ld -o $@ -O0 -ffreestanding -lgcc -nostdlib $^ -g
+	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/trampoline.sym
+	$(CPY) --strip-debug $@
+
+fs/bin/muse: $(KERNEL_OBJS) $(COMMON_OBJS)
+	$(CC) -T linker/kernel.ld -o $@ -O0 -ffreestanding -lgcc -nostdlib $^ -g
+	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/kernel.sym
 	$(CPY) --strip-debug $@
 
 -include $(ALL_DEPS)

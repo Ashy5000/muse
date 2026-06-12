@@ -18,6 +18,8 @@ extern const char psf_file[];
 void init_console(struct multiboot_tag_framebuffer *tag_fb) {
 	console_lock.cnt   = 0;
 	console_lock.owner = 0;
+	cursor.x           = 0;
+	cursor.y           = 0;
 	init_vga(tag_fb);
 }
 

@@ -1,6 +1,10 @@
+#include <muse/apic.h>
+#include <muse/context.h>
 #include <muse/hpet.h>
 #include <muse/logging.h>
 #include <muse/paging.h>
+#include <muse/scheduler.h>
+#include <muse/sleep.h>
 #include <stdbool.h>
 
 struct hpet *hpet_global;
@@ -83,3 +87,39 @@ void set_delay(uint32_t delay) {
 	volatile uint32_t *comparator = (uint32_t *)(hpet_base + 0x108);
 	comparator[0]                 = delay;
 }
+
+extern struct context *active_ctx;
+extern struct context *last_ctx;
+
+void handle_timer_inner() {
+	eoi();
+	lock_scheduler();
+
+	// Update sleeping contexts
+	sleep_tick();
+
+	if (active_ctx->slices_remaining == 0) {
+		active_ctx->slices_remaining = active_ctx->priority;
+	}
+	active_ctx->slices_remaining--;
+	if (active_ctx->slices_remaining > 0) {
+		unlock_scheduler();
+		return;
+	}
+
+	// Preempt this task
+	preempt();
+
+	uint32_t period_nano = tick_period / 1000000;
+	unlock_scheduler();
+	set_time(0);
+	set_delay(1000000 / period_nano);
+}
+
+__asm__(".globl handle_timer;"
+        "handle_timer:;"
+        "pushal;"
+        "cld;"
+        "call handle_timer_inner;"
+        "popal;"
+        "iret;");

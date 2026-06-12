@@ -7,14 +7,16 @@
 
 typedef uint32_t lba_t;
 
-enum hal_drive_res {
-	DRV_SUCCESS,
-	DRV_ERR_NO_DRIVE,
-	DRV_ERR_NO_SUPPORTED_MODE,
-	DRV_ERR_IO_FAILED,
-	DRV_ERR_BAD_ARGS,
-	DRV_ERR_TIMEOUT,
-};
+#define DRV_ERRORS                                                             \
+	E(DRV_SUCCESS)                                                         \
+	E(DRV_ERR_NO_DRIVE)                                                    \
+	E(DRV_ERR_NO_SUPPORTED_MODE)                                           \
+	E(DRV_ERR_IO_FAILED) E(DRV_ERR_BAD_ARGS) E(DRV_ERR_TIMEOUT)
+#define E(x) x,
+enum hal_drive_res { DRV_ERRORS DRV_ERR_TOP };
+#undef E
+#define E(x) #x,
+extern const char *const hal_drive_errs[DRV_ERR_TOP];
 
 struct hal_drive {
 	uint32_t sector_size;

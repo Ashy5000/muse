@@ -14,11 +14,14 @@ void *heap_sbrk(intptr_t inc) {
 		log(LOG_ERROR, LOG_ALLOC, "Out of memory!\n");
 		__asm__ volatile("cli; hlt");
 	}
-	active_ctx->ctx_heap->limit += inc;
-	if (!get_page_mapping((vaddr_t)active_ctx->ctx_heap->limit)) {
-		map_page((vaddr_t)active_ctx->ctx_heap->limit,
-		         (paddr_t)kpage_alloc());
+	for (vaddr_t v = ALIGN_PG_DOWN(active_ctx->ctx_heap->limit);
+	     v <= ALIGN_PG_DOWN(active_ctx->ctx_heap->limit + inc);
+	     v += PAGE_SIZE) {
+		if (!get_page_mapping(v)) {
+			map_page(v, (paddr_t)kpage_alloc());
+		}
 	}
+	active_ctx->ctx_heap->limit += inc;
 	return prev_lim;
 }
 

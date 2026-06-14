@@ -1,5 +1,5 @@
-#include <muse/ext2.h>
 #include <muse/alloc.h>
+#include <muse/ext2.h>
 #include <muse/logging.h>
 #include <muse/utils.h>
 #include <muse/vfs.h>
@@ -204,9 +204,10 @@ enum hal_drive_res inode_data_transfer(struct ext2_superblock *superblock,
 		}
 		// Singly indirect block
 		uint32_t *indirect_block = kmalloc(block_size);
-		err = bdev->transfer(bdev, inode->indirect_block_single,
-		                     block_size / SECTOR_SIZE, indirect_block,
-		                     DIR_READ);
+		err                      = bdev->transfer(
+		    bdev,
+		    inode->indirect_block_single * block_size / SECTOR_SIZE,
+		    block_size / SECTOR_SIZE, indirect_block, DIR_READ);
 		if (err) {
 			return err;
 		}
@@ -214,7 +215,9 @@ enum hal_drive_res inode_data_transfer(struct ext2_superblock *superblock,
 		if (!lba) {
 			indirect_block[idx - 12] = alloc_ext2_obj(
 			    superblock, bdev, inode->group_id, false);
-			err = bdev->transfer(bdev, inode->indirect_block_single,
+			err = bdev->transfer(bdev,
+			                     inode->indirect_block_single *
+			                         block_size / SECTOR_SIZE,
 			                     block_size / SECTOR_SIZE,
 			                     indirect_block, DIR_WRITE);
 			lba =
@@ -372,6 +375,7 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 	    (block + 1) * block_size; /* Where the current block ends. */
 	uint32_t bytes_written = 0;
 	enum hal_drive_res err;
+	uint32_t skip = offset - block_start;
 	for (;;) {
 		err = inode_data_transfer(payload->superblock, payload->bdev,
 		                          payload->inode_id, &payload->inode,
@@ -379,16 +383,10 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 		if (err) {
 			break;
 		}
-		uint32_t skip = 0; /* The number of bytes from the beginning of
-		                      the block that we should skip */
-		if (bytes_written == 0) {
-			skip = offset - block_start;
-		}
-		uint32_t cnt = block_size;
+		uint32_t cnt = block_size - skip;
 		if (offset + len < block_end) {
 			cnt += offset + len - block_end;
 		}
-		cnt -= skip;
 		if (dir == DIR_READ) {
 			memcpy(data + bytes_written, bfr + skip, cnt);
 		} else {
@@ -408,6 +406,7 @@ uint32_t ext2_transfer(struct vfs_inode *inode, uint32_t offset, uint32_t len,
 		block++;
 		block_start += block_size;
 		block_end += block_size;
+		skip = 0;
 	}
 
 	if (dir == DIR_WRITE && offset + len >= payload->inode.size_lo) {

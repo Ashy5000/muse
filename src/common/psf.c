@@ -6,6 +6,8 @@ const char psf_file[] = {
 #embed "../../deps/font.psf"
 };
 
+extern struct vga_framebuffer fb;
+
 void psf_put_char(unsigned char c, unsigned int x_c, unsigned int y_c,
                   color_t color) {
 	struct psf_font *font = (struct psf_font *)psf_file;
@@ -30,5 +32,40 @@ void psf_put_char(unsigned char c, unsigned int x_c, unsigned int y_c,
 			}
 		}
 		offset += line_size;
+	}
+}
+
+#define TITLE_H 11
+#define TITLE_W 60
+
+__attribute__((nonstring)) char title[TITLE_H][TITLE_W] = {
+    "        _   _        _                  _            _      ",
+    "       /\\_\\/\\_\\ _   /\\_\\               / /\\         /\\ \\    ",
+    "      / / / / //\\_\\/ / /         _    / /  \\       /  \\ \\   ",
+    ("     /\\ \\/ \\ \\/ / /\\ \\ \\__      /\\_\\ / / /\\ \\__   / /\\ \\ \\ "
+     " "),
+    "    /  \\____\\__/ /  \\ \\___\\    / / // / /\\ \\___\\ / / /\\ \\_\\ ",
+    "   / /\\/________/    \\__  /   / / / \\ \\ \\ \\/___// /_/_ \\/_/ ",
+    "  / / /\\/_// / /     / / /   / / /   \\ \\ \\     / /____/\\    ",
+    " / / /    / / /     / / /   / / /_    \\ \\ \\   / /\\____\\/    ",
+    "/ / /    / / /     / / /___/ / //_/\\__/ / /  / / /______    ",
+    "\\/_/    / / /     / / /____\\/ / \\ \\/___/ /  / / /_______\\   ",
+    "        \\/_/      \\/_________/   \\_____\\/   \\/__________/   ",
+};
+
+void psf_logo() {
+	struct psf_font *font = (struct psf_font *)psf_file;
+	if (font->flags || font->magic != PSF_MAGIC) {
+		return; /* We don't support Unicode. */
+	}
+	unsigned int title_w = TITLE_W * font->width;
+	unsigned int title_h = TITLE_H * font->height;
+	unsigned int title_x = (fb.width / 2 - title_w / 2) / font->width;
+	unsigned int title_y = (fb.height / 2 - title_h / 2) / font->height;
+	for (unsigned int y = 0; y < TITLE_H; y++) {
+		for (unsigned int x = 0; x < TITLE_W; x++) {
+			psf_put_char(title[y][x], title_x + x, title_y + y,
+			             0xFFFFFF);
+		}
 	}
 }

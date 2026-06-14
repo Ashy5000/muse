@@ -18,7 +18,9 @@ struct elf_info parse_elf(char *path) {
 		return res;
 	}
 	uint32_t file_size = file->size;
-	res.contents       = kmalloc(file_size);
+	log(LOG_INFO, LOG_MEM, "ELF executable found with size %x.\n",
+	    file_size);
+	res.contents = kmalloc(file_size);
 	if (file->transfer(file, 0, file_size, res.contents, DIR_READ) !=
 	    file_size) {
 		kfree(res.contents);
@@ -71,7 +73,7 @@ struct elf_info parse_elf(char *path) {
 }
 
 void load_elf_data(struct elf_info elf) {
-	uint8_t *data              = kmalloc_aligned();
+	volatile uint8_t *data     = kmalloc_aligned();
 	struct scroll *current_scr = elf.first_scr;
 	for (uint32_t offset = elf.header->program_table_offset;
 	     offset < elf.header->program_table_offset +
@@ -86,8 +88,7 @@ void load_elf_data(struct elf_info elf) {
 		    prog_header->p_vaddr - (prog_header->p_vaddr % PAGE_SIZE);
 		uint32_t vaddr_end =
 		    prog_header->p_vaddr + prog_header->p_memsz;
-		uint32_t limit_page =
-		    vaddr_end + PAGE_SIZE - (vaddr_end % PAGE_SIZE);
+		uint32_t limit_page  = ALIGN_PG_UP(vaddr_end);
 		uint32_t data_offset = prog_header->p_vaddr - first_page;
 		uint32_t page_count  = (limit_page - first_page) / PAGE_SIZE;
 		uint32_t file_offset = prog_header->p_offset;
@@ -107,7 +108,6 @@ void load_elf_data(struct elf_info elf) {
 			       data_offset < PAGE_SIZE) {
 				data[data_offset] = 0;
 				data_offset++;
-				file_offset++;
 			}
 			data_offset = 0;
 			current_scr = current_scr->next;
@@ -115,7 +115,7 @@ void load_elf_data(struct elf_info elf) {
 	}
 	unmap_page((uintptr_t)data);
 	kfree(elf.contents);
-	kfree(data);
+	kfree((void *)data);
 }
 
 struct scroll

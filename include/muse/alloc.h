@@ -41,6 +41,7 @@ struct chunk {
 void *kmalloc(size_t size);
 void *kmalloc_aligned();
 struct scroll kmalloc_page();
+void *kmalloc_aligned_multi(uint32_t cnt);
 void kfree(void *p);
 void init_heap(struct heap *temp_heap);
 

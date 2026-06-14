@@ -6,6 +6,7 @@
 #include <stdarg.h>
 
 void init_console(struct multiboot_tag_framebuffer *tag_fb);
+void reinit_console(void);
 void console_put_char(char c, color_t color);
 void kprint_int_fancy(int x, int base, color_t color);
 #define kprint_int(X, B) kprint_int_fancy(X, B, 0xFFFFFF)

@@ -6,7 +6,7 @@
 #include <muse/trampoline.h>
 
 #define LOOPBACK_DIR    ((paging_table_t)0xFFFFF000)
-#define LOOPBACK_TBL(I) ((paging_table_t)(uintptr_t)(0xFFC00000 + 0x400 * (I)))
+#define LOOPBACK_TBL(I) ((paging_table_t)(uintptr_t)(0xFFC00000 + ((I) << 12)))
 
 #define PAGING_BIT_PRESENT   1
 #define PAGING_BIT_WRITEABLE 2
@@ -128,6 +128,9 @@ paging_entry_t get_page_entry(vaddr_t vaddr) {
 }
 
 paddr_t get_page_mapping(vaddr_t vaddr) {
+	if (!is_present(LOOPBACK_DIR[PG_DIR_IDX(vaddr)])) {
+		return 0;
+	}
 	paging_entry_t entry = get_page_entry(vaddr);
 	if (!is_present(entry)) {
 		return 0;
@@ -286,9 +289,12 @@ paddr_t create_kernel_directory(func_ptr_t func_ptr, struct scroll *scr) {
 		directory_virt[i] = LOOPBACK_DIR[i];
 	}
 	for (uint32_t i = PAGE_SIZE / sizeof(uint32_t) / 2;
-	     i < PAGE_SIZE / sizeof(uint32_t); i++) {
+	     i < PAGE_SIZE / sizeof(uint32_t) - 1; i++) {
 		directory_virt[i] = 0;
 	}
+
+	directory_virt[1023] = create_paging_entry(
+	    directory_scr.aligned_backend.page, true, true, false);
 
 	struct scroll stack_scr = kmalloc_page();
 	/* Fill the new stack. */
@@ -334,6 +340,26 @@ paddr_t create_kernel_directory(func_ptr_t func_ptr, struct scroll *scr) {
 	scroll_unmap(directory_scr);
 
 	return directory_scr.aligned_backend.page;
+}
+
+void free_lower_half() {
+	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(paging_entry_t) / 2; i++) {
+		if (!is_present(LOOPBACK_DIR[i])) {
+			continue;
+		}
+		paging_table_t page_table = LOOPBACK_TBL(i);
+		for (uint32_t j = 0; j < PAGE_SIZE / sizeof(paging_entry_t) / 2;
+		     j++) {
+			if (is_present(page_table[j])) {
+				kpage_set_status(page_table[j] & ADDR_MASK,
+				                 true);
+			}
+			page_table[j] = 0;
+		}
+		kpage_set_status((vaddr_t)page_table, true);
+		LOOPBACK_DIR[i] = 0;
+	}
+	__asm__ volatile("mov %%cr3, %%eax; mov %%eax, %%cr3" ::: "%eax");
 }
 
 void process_page_fault(void) {

@@ -17,8 +17,14 @@
 		}                                                              \
 	}
 
+bool logging_enabled = true;
+
 void vlog(enum log_level level, enum log_class lclass, const char *fmt,
           va_list args) {
+	if (!logging_enabled) {
+		return;
+	}
+
 	DEF_LOG_LEVELS();
 
 	switch (level) {

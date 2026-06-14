@@ -23,6 +23,13 @@ void init_console(struct multiboot_tag_framebuffer *tag_fb) {
 	init_vga(tag_fb);
 }
 
+void reinit_console() {
+	console_lock.cnt   = 0;
+	console_lock.owner = 0;
+	cursor.x           = 0;
+	cursor.y           = 0;
+}
+
 void console_put_char(char c, color_t color) {
 	lock_reentrant_acquire(&console_lock);
 	if (c == '\n') {

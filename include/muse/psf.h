@@ -17,5 +17,6 @@ struct psf_font {
 
 void psf_put_char(unsigned char c, unsigned int x_c, unsigned int y_c,
                   color_t color);
+void psf_logo(void);
 
 #endif

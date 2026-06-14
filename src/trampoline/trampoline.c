@@ -13,6 +13,8 @@
 #include <muse/text.h>
 #include <muse/trampoline.h>
 
+extern struct vga_framebuffer fb;
+
 /* The trampoline_info structure is located at the very start of memory. */
 struct trampoline_info *t_info = (struct trampoline_info *)0x0;
 
@@ -88,6 +90,9 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 	register_ata();
 	init_pci();
 
+	t_info->fb = fb;
+
+	log(LOG_INFO, LOG_KERNEL, "Booting main kernel...\n");
 	load_elf_kernel("/ext2/bin/muse");
 	terminate();
 

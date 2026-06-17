@@ -33,7 +33,7 @@ struct pci_dev {
 };
 
 struct pci_bus {
-	struct pci_dev devs[32];
+	struct pci_dev *devs[32];
 };
 
 typedef void (*pci_fn_init_t)(struct pci_func);
@@ -48,7 +48,7 @@ struct pci_handler {
 void pci_register_handler(struct pci_handler *handler);
 
 struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func);
-struct pci_dev scan_pci_dev(uint8_t bus, uint8_t slot);
+struct pci_dev *scan_pci_dev(uint8_t bus, uint8_t slot);
 struct pci_bus scan_pci_bus(uint8_t bus);
 
 void init_pci();

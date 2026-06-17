@@ -7,7 +7,7 @@
 extern struct context *active_ctx;
 
 // TODO: Make data passing between bootloader and kernel better
-uint32_t *tss = (uint32_t *)0x7d96;
+uint32_t *tss = 0;
 
 struct lock_simple runway_lock;
 func_ptr_t userspace_runway;

@@ -42,11 +42,12 @@ struct xsdt {
 	uint64_t sdt_ptrs[];
 } __attribute__((packed));
 
-void *find_rsdt();
+struct rsdp *find_rsdp(struct multiboot_tag_old_acpi *tag_acpi);
+void *find_rsdt(struct rsdp *rsdp);
 
 void *find_sdt(char signature[4]);
 bool verify_sdt(void *sdt);
 
-void init_acpi(struct multiboot_tag_old_acpi *tag_acpi);
+void reinit_acpi();
 
 #endif

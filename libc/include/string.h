@@ -1,8 +1,8 @@
 #ifndef _STRING_H
 #define _STRING_H
 
+#include "size_t.h"
 #include <stddef.h>
-#include <muse/size_t.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,14 +18,14 @@ int memcmp(const void *s1, const void *s2, size_t n);
 int strcmp(const char *s1, const char *s2);
 int strncmp(const char *s1, const char *s2, size_t n);
 void *memchr(const void *s, int c, size_t n);
-char *strchr(const char*, int);
+char *strchr(const char *, int);
 size_t strcspn(const char *s1, const char *s2);
 char *strpbrk(const char *s1, const char *s2);
 char *strrchr(const char *s, int c);
 size_t strspn(const char *s1, const char *s2);
 char *strstr(const char *s1, const char *s2);
-void *memset(void*, int, size_t);
-size_t strlen(const char*);
+void *memset(void *, int, size_t);
+size_t strlen(const char *);
 
 #ifdef __cplusplus
 }

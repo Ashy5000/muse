@@ -12,7 +12,7 @@ struct ata_dev {
 	bool lba48;
 };
 
-#define MAX_POLLS   1000000
+#define MAX_POLLS   10000000
 #define SECTOR_SIZE 512
 
 void register_ata();

@@ -1,17 +1,32 @@
 #define KERNEL
 
 #include <muse/alloc.h>
+#include <muse/apic.h>
+#include <muse/ata.h>
 #include <muse/context.h>
+#include <muse/elf_user.h>
+#include <muse/gdt.h>
+#include <muse/interrupts.h>
 #include <muse/logging.h>
+#include <muse/pci.h>
+#include <muse/pic.h>
 #include <muse/psf.h>
+#include <muse/scheduler.h>
+#include <muse/syscall.h>
+#include <muse/term.h>
 #include <muse/text.h>
 #include <muse/trampoline.h>
+#include <muse/userspace.h>
 
-struct trampoline_info *t_info = 0;
+extern void *rsdt_global;
 extern bool logging_enabled;
 extern struct vga_framebuffer fb;
+extern uint32_t *tss;
 
-#define KERNEL_ALIGNED_HEAP_SIZE (512 * PAGE_SIZE)
+struct trampoline_info *t_info = 0;
+struct gdt_descriptor gdt_desc;
+
+#define KERNEL_ALIGNED_HEAP_SIZE (1024 * PAGE_SIZE)
 
 int kmain() {
 	logging_enabled = false;
@@ -35,23 +50,69 @@ int kmain() {
 		t_info->regions[i].bitmap = bitmap;
 	}
 
-	free_lower_half();
-
-	uint32_t fb_pg_cnt = t_info->fb.pitch * t_info->fb.height / PAGE_SIZE;
-	uint8_t *fb_data   = kmalloc_aligned_multi(fb_pg_cnt);
-	for (uint32_t i = 0; i < fb_pg_cnt; i++) {
-		map_page((vaddr_t)fb_data + i * PAGE_SIZE,
-		         (vaddr_t)t_info->fb.bfr + i * PAGE_SIZE);
-	}
-
 	fb     = t_info->fb;
-	fb.bfr = fb_data;
+	fb.bfr = map_phys_obj(fb.bfr, fb.pitch * fb.height);
 
 	reinit_console();
-	fill_rect(0, 0, fb.width, fb.height - 1, 0x000000);
+	fill_rect(0, 0, fb.width, fb.height, 0x000000);
 	logging_enabled = true;
 
+	struct gdt_descriptor desc_old;
+	__asm__("sgdtl %0" : "=m"(desc_old)::);
+	gdt_desc.size_dec = desc_old.size_dec;
+	void *gdt         = kmalloc(gdt_desc.size_dec + 1);
+	gdt_desc.start    = (uintptr_t)gdt;
+	memcpy(gdt, (void *)desc_old.start, gdt_desc.size_dec + 1);
+	size_t offset = 0;
+	for (; offset < (size_t)gdt_desc.size_dec + 1;
+	     offset += sizeof(struct gdt_segment_descriptor)) {
+		struct gdt_segment_descriptor *seg_desc = gdt + offset;
+		if (seg_desc->access_byte & 0x10) {
+			continue;
+		}
+		uint8_t type = seg_desc->access_byte & 0xF;
+		if (type != 0x9 && type != 0xB) {
+			continue;
+		}
+		uint32_t *tss_old =
+		    (uint32_t *)(uintptr_t)((seg_desc->base_hi << 24) |
+		                            seg_desc->base_lo);
+		tss = kmalloc(0x6C);
+		memcpy(tss, tss_old, 0x6C);
+		seg_desc->base_hi = (uintptr_t)tss >> 24;
+		seg_desc->base_lo = (uintptr_t)tss & 0xFFFFFF;
+		break;
+	}
+	if (!tss) {
+		log(LOG_ERROR, LOG_KERNEL, "Could not find TSS!\n");
+		__asm__ volatile("cli; hlt");
+	}
+
+	__asm__("lgdtl %0" ::"m"(gdt_desc) :);
+	__asm__ volatile("ltr %0" ::"r"(offset) :);
+
+	free_lower_half();
+
 	log(LOG_INFO, LOG_KERNEL, "Main kernel loaded and initialized!\n");
+
+	reinit_acpi();
+
+	init_idt();
+	init_pic();
+	init_apic();
+	init_ioapic();
+
+	register_ata();
+	init_pci();
+
+	init_userspace();
+	init_first_ctx();
+	init_syscalls();
+	init_root_term();
+	load_elf_user("/ext2/bin/test.o", 0, 0, root_term, root_term,
+	              root_term);
+	log(LOG_INFO, LOG_KERNEL, "Loaded mused.\n");
+	preempt();
 
 	for (;;) {
 		__asm__ volatile("hlt");

@@ -168,10 +168,11 @@ void *kmalloc_aligned_multi(uint32_t cnt) {
 	uint32_t j;
 	for (; i < active_ctx->ctx_heap->bitmap_cnt; i++) {
 		for (j = 0; j < 32; j++) {
-			if (!(active_ctx->ctx_heap->page_bitmap[i] >> j)) {
-				if (contig == cnt) {
-					goto kmalloc_aligned_multi_done;
-				}
+			if (contig == cnt) {
+				goto kmalloc_aligned_multi_done;
+			}
+			if (!((active_ctx->ctx_heap->page_bitmap[i] >> j) &
+			      1)) {
 				contig++;
 			} else {
 				contig = 0;
@@ -181,12 +182,11 @@ void *kmalloc_aligned_multi(uint32_t cnt) {
 kmalloc_aligned_multi_done:
 	if (contig == cnt) {
 		uint32_t j_old = (j - cnt) % 32;
-		uint32_t i_old = i + ((int32_t)j - (int32_t)cnt) / 32;
-		for (uint32_t i_n = i_old; i_n < i; i_n++) {
-			for (uint32_t j_n = j_old; j_n < j; j_n++) {
-				active_ctx->ctx_heap->page_bitmap[i_n] |=
-				    1 << j_n;
-			}
+		uint32_t i_old = (i * 32 + j - cnt) / 32;
+		for (uint32_t offset = i * 32 + j - cnt; offset < i * 32 + j;
+		     offset++) {
+			active_ctx->ctx_heap->page_bitmap[offset / 32] |=
+			    1 << (offset % 32);
 		}
 		return active_ctx->ctx_heap->aligned_start +
 		       (i_old * 32 + j_old) * PAGE_SIZE;

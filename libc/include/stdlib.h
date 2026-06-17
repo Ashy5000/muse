@@ -1,7 +1,7 @@
 #ifndef _STDLIB_H
 #define _STDLIB_H
 
-#include <muse/size_t.h>
+#include "size_t.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -9,9 +9,9 @@ extern "C" {
 
 void abort(void);
 int atexit(void (*)(void));
-int atoi(const char*);
-void free(void*);
-char *getenv(const char*);
+int atoi(const char *);
+void free(void *);
+char *getenv(const char *);
 void *malloc(size_t);
 void *calloc(size_t, size_t);
 int abs(int);

@@ -76,7 +76,12 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 		}
 	}
 
-	init_acpi(tag_acpi);
+	struct rsdp *acpi_rsdp = find_rsdp(tag_acpi);
+	if (!acpi_rsdp) {
+		log(LOG_ERROR, LOG_KERNEL, "RSDP is invalid!\n");
+	}
+	t_info->acpi_rsdt = (struct rsdt *)find_rsdt(acpi_rsdp);
+	t_info->rsdt_len  = t_info->acpi_rsdt->header.length;
 
 	struct multiboot_tag_elf_sections *tag_elf =
 	    (struct multiboot_tag_elf_sections *)multiboot_find_tag(

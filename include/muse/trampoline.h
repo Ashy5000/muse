@@ -1,6 +1,7 @@
 #ifndef TRAMPOLINE_H
 #define TRAMPOLINE_H
 
+#include <muse/acpi.h>
 #include <muse/memory.h>
 #include <muse/vga.h>
 
@@ -16,6 +17,8 @@ struct trampoline_region {
  * Importantly, this information is preserved while moving to the higher half.
  * It is located at the very start of memory. */
 struct trampoline_info {
+	struct rsdt *acpi_rsdt;
+	size_t rsdt_len;
 	struct vga_framebuffer fb;
 	struct trampoline_region regions[MMAP_CNT];
 	uint32_t region_cnt;

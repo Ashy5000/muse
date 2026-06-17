@@ -1,7 +1,7 @@
 #ifndef _STDIO_H
 #define _STDIO_H 1
 
-#include <muse/size_t.h>
+#include "size_t.h"
 #include <stdarg.h>
 #include <stddef.h>
 

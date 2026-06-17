@@ -1,3 +1,4 @@
+#include <muse/alloc.h>
 #include <muse/io.h>
 #include <muse/logging.h>
 #include <muse/pci.h>
@@ -109,26 +110,26 @@ struct pci_func scan_pci_func(uint8_t bus, uint8_t slot, uint8_t func) {
 	return res;
 }
 
-struct pci_dev scan_pci_dev(uint8_t bus, uint8_t slot) {
-	struct pci_dev dev;
-	dev.present          = false;
-	dev.bus              = bus;
-	dev.slot             = slot;
+struct pci_dev *scan_pci_dev(uint8_t bus, uint8_t slot) {
+	struct pci_dev *dev  = kmalloc(sizeof(*dev));
+	dev->bus             = bus;
+	dev->slot            = slot;
 	struct pci_func func = scan_pci_func(bus, slot, 0);
 	if (func.vendor == 0xFFFF) {
-		return dev;
+		kfree(dev);
+		return 0;
 	}
-	dev.present    = true;
-	dev.func_count = 1;
-	dev.funcs[0]   = func;
+	dev->present    = true;
+	dev->func_count = 1;
+	dev->funcs[0]   = func;
 	if (func.multi_function) {
 		for (uint8_t i = 1; i < 8; i++) {
 			func = scan_pci_func(bus, slot, i);
 			if (func.vendor == 0xFFFF) {
 				break;
 			}
-			dev.func_count++;
-			dev.funcs[i] = func;
+			dev->func_count++;
+			dev->funcs[i] = func;
 		}
 	}
 	return dev;
@@ -144,9 +145,9 @@ struct pci_bus scan_pci_bus(uint8_t bus) {
 }
 
 void init_pci() {
-	struct pci_dev host_bridge = scan_pci_dev(0, 0);
+	struct pci_dev *host_bridge = scan_pci_dev(0, 0);
 
-	for (uint8_t i = 0; i < host_bridge.func_count; i++) {
+	for (uint8_t i = 0; i < host_bridge->func_count; i++) {
 		scan_pci_bus(i);
 	}
 }

@@ -25,7 +25,7 @@ struct __attribute__((packed)) idt_entry {
 	uint16_t isr_addr_high;
 };
 
-struct idt_entry idt[256];
+struct idt_entry idt[ISR_COUNT];
 
 // To be stored in the IDTR register
 struct __attribute__((packed)) idtr {
@@ -60,7 +60,6 @@ void idt_set_entry(int vector, void *isr, bool user) {
 
 void init_idt(void) {
 	idt_set_entry(0xD, handle_gpf, false);
-	idt_set_entry(0xE, handle_gpf, false);
 	idt_set_entry(0x31, handle_keypress, false);
 	idt_set_entry(0x30 + timer_irq, handle_timer, false);
 	idt_set_entry(0x80, syscall_isr, true);

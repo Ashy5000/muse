@@ -43,11 +43,11 @@ void init_vga(struct multiboot_tag_framebuffer *tag_fb) {
 }
 
 void scroll(unsigned int d_y) {
+	unsigned int top_aligned = fb.height - (fb.height % d_y);
 	memcpy(fb.bfr, fb.bfr + (fb.pitch * d_y),
-	       (fb.height - (fb.height % d_y)) * fb.pitch);
-	for (unsigned int y = fb.height - (fb.height % d_y) - d_y;
-	     y < fb.height; y++) {
-		for (unsigned int x = 0; x < fb.width; x++) {
+	       (top_aligned - d_y) * fb.pitch);
+	for (unsigned int y = top_aligned - d_y; y < fb.height; y++) {
+		for (unsigned int x = 0; x < fb.pitch; x++) {
 			fb.bfr[(y * fb.pitch) + x] = 0;
 		}
 	}

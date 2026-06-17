@@ -1,3 +1,4 @@
+#include <muse/alloc.h>
 #include <muse/apic.h>
 #include <muse/logging.h>
 #include <muse/msr.h>
@@ -8,8 +9,7 @@
 
 #define APIC_BASE_MSR 0x1B
 
-uint32_t apic_base;
-struct scroll apic_scr;
+uintptr_t apic_base;
 
 extern uint32_t timer_irq;
 
@@ -28,33 +28,24 @@ void init_apic() {
 	log(LOG_INFO, LOG_APIC, "APIC base registers at %x.\n", apic_base);
 	set_apic_base(apic_base); /* This will keep the base the same, but
 	                             enable the local APIC. */
-	*((uint32_t *)(uintptr_t)(apic_base + 0xF0)) |=
+	apic_base = (uintptr_t)map_phys_obj((void *)apic_base, 0x400);
+
+	*((uint32_t *)(apic_base + 0xF0)) |=
 	    0x100; /* Set bit 8 of the Spurious Intterupt Vector Register to
 	              start receiving interrupts */
-	uint32_t apic_limit       = apic_base + 0x400;
-	uint32_t apic_pages_start = apic_base - (apic_base % PAGE_SIZE);
-	uint32_t apic_pages_end   = apic_limit;
-	if (apic_pages_end % PAGE_SIZE > 0) {
-		apic_pages_end += PAGE_SIZE - (apic_pages_end % PAGE_SIZE);
-	}
-	apic_scr.type                 = SCROLL_ALIGNED;
-	apic_scr.vaddr                = apic_pages_start;
-	apic_scr.aligned_backend.page = apic_pages_start;
-	apic_scr.size                 = apic_pages_end - apic_pages_start;
-	// reserve_scroll(&apic_scr);
 	log(LOG_INFO, LOG_APIC, "APIC initialized.\n");
 }
 
 void eoi() { *((uint32_t *)(uintptr_t)(apic_base + 0xB0)) = 0; }
 
-void write_ioapic(uint32_t base, uint8_t offset, uint32_t val) {
-	*((volatile uint32_t *)(uintptr_t)base)          = offset;
-	*((volatile uint32_t *)(uintptr_t)(base + 0x10)) = val;
+void write_ioapic(uintptr_t base, uint8_t offset, uint32_t val) {
+	*((volatile uint32_t *)base)          = offset;
+	*((volatile uint32_t *)(base + 0x10)) = val;
 }
 
-uint32_t read_ioapic(uint32_t base, uint8_t offset) {
-	*((volatile uint32_t *)(uintptr_t)base) = offset;
-	return *((volatile uint32_t *)(uintptr_t)(base + 0x10));
+uint32_t read_ioapic(uintptr_t base, uint8_t offset) {
+	*((volatile uint32_t *)base) = offset;
+	return *((volatile uint32_t *)base + 0x10);
 }
 
 void map_irq(uint32_t base, uint8_t irq) {
@@ -77,8 +68,8 @@ void init_ioapic() {
 		log(LOG_ERROR, LOG_APIC,
 		    "APIC info not present in ACPI tables!\n");
 	}
-	uint32_t ioapic_base = 0;
-	void *entry          = ((void *)madt) + 0x2C;
+	vaddr_t ioapic_base = 0;
+	void *entry         = ((void *)madt) + 0x2C;
 	while ((uintptr_t)entry < (uintptr_t)madt + madt->header.length) {
 		uint8_t type = ((uint8_t *)entry)[0];
 		if (type == 1) {
@@ -89,6 +80,8 @@ void init_ioapic() {
 		uint8_t length = ((uint8_t *)entry)[1];
 		entry += length;
 	}
+
+	ioapic_base = (uintptr_t)map_phys_obj((void *)ioapic_base, 0x14);
 
 	map_irq(ioapic_base, 1); // Keyboard
 	map_irq(ioapic_base, timer_irq);

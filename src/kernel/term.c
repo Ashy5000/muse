@@ -11,6 +11,7 @@ uint32_t term_transfer(struct vfs_inode *inode, uint32_t offset_p,
 	__asm__ volatile(
 	    "sti"); /* Allow context switching during this process */
 	if (dir == DIR_WRITE) {
+		log(LOG_DEBUG, LOG_TERM, "Writing %x bytes to term.\n", size_p);
 		for (uint32_t i = 0; i < size_p; i++) {
 			console_put_char(((char *)data)[i], 0xFFFFFF);
 		}
@@ -132,4 +133,5 @@ void init_root_term() {
 	    mount(inode, "/dev/term"); /* TODO: Dynamically generate terminal
 	                                  mount points. */
 	root_term = &mnt->inode;
+	log(LOG_INFO, LOG_TERM, "Root terminal device created.\n");
 }

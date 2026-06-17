@@ -190,70 +190,53 @@ void bind_manuscript(manuscript_t manuscript) {
 }
 
 paddr_t create_task_directory(func_ptr_t func_ptr, bool user,
-                              struct scroll *first_scr) {
+                              struct scroll *scr) {
 	struct scroll directory_scr = kmalloc_page();
 	paging_table_t directory_virt =
 	    (uint32_t *)(uintptr_t)directory_scr.vaddr;
 
-	// Copy the current directory
-	for (uint32_t i = 1; i < PAGE_SIZE / sizeof(uint32_t); i++) {
+	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t) / 2; i++) {
+		directory_virt[i] = 0;
+	}
+	/* Copy the higher half */
+	for (uint32_t i = PAGE_SIZE / sizeof(uint32_t) / 2;
+	     i < PAGE_SIZE / sizeof(uint32_t); i++) {
 		directory_virt[i] = LOOPBACK_DIR[i];
 	}
 
-	// Copy the first table- we need to modify it to add the new stack
-	paging_table_t table_active = LOOPBACK_TBL(0);
-	struct scroll table_scr     = kmalloc_page();
-	paging_table_t table_virt   = (uint32_t *)(uintptr_t)table_scr.vaddr;
-
-	directory_virt[0] =
-	    create_paging_entry((vaddr_t)table_virt, true, true, true) |
-	    MANUSCRIPT_BIND;
 	directory_virt[(PAGE_SIZE / sizeof(paging_entry_t)) - 1] =
 	    create_paging_entry(directory_scr.aligned_backend.page, true, true,
 	                        false);
 
-	for (uint32_t i = 0; i < PAGE_SIZE / sizeof(paging_entry_t); i++) {
-		table_virt[i] = table_active[i];
-	}
-
-	// Map the kernel stack
-	for (vaddr_t i = TASK_STACK_BASE - TASK_STACK_SIZE;
-	     i <= TASK_STACK_BASE; i += PAGE_SIZE) {
-		paddr_t page_phys = (uintptr_t)kpage_alloc();
-		table_virt[PG_TBL_IDX(i)] =
-		    create_paging_entry(page_phys, true, true, false);
-	}
-
 	struct scroll stack_scr = kmalloc_page();
-	table_virt[PG_TBL_IDX(TASK_STACK_BASE - PAGE_SIZE)] =
-	    create_paging_entry(stack_scr.aligned_backend.page, true, true,
-	                        false);
+	/* Fill the new stack. */
+	uint32_t *stack =
+	    (uint32_t *)(uintptr_t)(stack_scr.vaddr +
+	                            (TASK_STACK_BASE % PAGE_SIZE));
+	stack[-1] = (uintptr_t)func_ptr;
+	stack[-2] = 0;               // EBX
+	stack[-3] = 0;               // ESI
+	stack[-4] = 0;               // EDI
+	stack[-5] = TASK_STACK_BASE; // EBP
+	unmap_page(stack_scr.vaddr);
+	kfree((void *)stack_scr.vaddr);
+	stack_scr.vaddr = ALIGN_PG_DOWN(TASK_STACK_BASE);
+	stack_scr.next  = scr;
+	scr             = &stack_scr;
 
-	// Fill the kernel stack
-	uint32_t *stack = (uint32_t *)(uintptr_t)(stack_scr.vaddr + PAGE_SIZE);
-	stack[-1]       = (uintptr_t)func_ptr;
-	stack[-2]       = 0;               // EBX
-	stack[-3]       = 0;               // ESI
-	stack[-4]       = 0;               // EDI
-	stack[-5]       = TASK_STACK_BASE; // EBP
-	paddr_t page_phys = (uintptr_t)kpage_alloc();
-	table_virt[PG_TBL_IDX(TASK_STACK_BASE)] =
-	    create_paging_entry(page_phys, true, true, false);
-
+	struct scroll user_stack_scr;
 	if (user) {
-		// Map the user stack
-		for (vaddr_t i = USER_STACK_BASE - USER_STACK_SIZE;
-		     i <= USER_STACK_BASE; i += PAGE_SIZE) {
-			paddr_t page_phys = (uintptr_t)kpage_alloc();
-			table_virt[PG_TBL_IDX(i)] =
-			    create_paging_entry(page_phys, true, true, true);
-		}
+		user_stack_scr.type                 = SCROLL_ALIGNED;
+		user_stack_scr.size                 = USER_STACK_SIZE;
+		user_stack_scr.aligned_backend.page = (vaddr_t)kpage_alloc();
+		user_stack_scr.vaddr = ALIGN_PG_DOWN(USER_STACK_BASE);
+		user_stack_scr.next  = scr;
+		scr                  = &user_stack_scr;
 	}
 
-	struct scroll *current_scr = first_scr;
-	while (current_scr) {
-		uint32_t directory_index = PG_DIR_IDX(current_scr->vaddr);
-		paging_table_t alloc_table_virt = table_virt;
+	while (scr) {
+		uint32_t directory_index = PG_DIR_IDX(scr->vaddr);
+		paging_table_t alloc_table_virt;
 		if (directory_virt[directory_index] & MANUSCRIPT_BIND) {
 			alloc_table_virt =
 			    (paging_table_t)(vaddr_t)(directory_virt
@@ -267,15 +250,19 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user,
 			    create_paging_entry(alloc_table_scr.vaddr, true,
 			                        true, true) |
 			    MANUSCRIPT_BIND;
+			for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t);
+			     i++) {
+				alloc_table_virt[i] = 0;
+			}
 		}
-		uint32_t table_index          = PG_TBL_IDX(current_scr->vaddr);
+		uint32_t table_index          = PG_TBL_IDX(scr->vaddr);
 		alloc_table_virt[table_index] = create_paging_entry(
-		    current_scr->aligned_backend.page, true, true, true);
-		current_scr = current_scr->next;
+		    scr->aligned_backend.page, true, true, true);
+		scr = scr->next;
 	}
 
 	bind_manuscript(directory_virt);
-	scroll_unmap(stack_scr);
+	scroll_unmap(directory_scr);
 
 	return directory_scr.aligned_backend.page;
 }
@@ -328,6 +315,10 @@ paddr_t create_kernel_directory(func_ptr_t func_ptr, struct scroll *scr) {
 			    create_paging_entry(alloc_table_scr.vaddr, true,
 			                        true, true) |
 			    MANUSCRIPT_BIND;
+			for (uint32_t i = 0; i < PAGE_SIZE / sizeof(uint32_t);
+			     i++) {
+				alloc_table_virt[i] = 0;
+			}
 		}
 		uint32_t table_index          = PG_TBL_IDX(scr->vaddr);
 		alloc_table_virt[table_index] = create_paging_entry(
@@ -367,4 +358,16 @@ void process_page_fault(void) {
 	// a dedicated panic() function.
 	log(LOG_ERROR, LOG_PAGING, "\n\n\nPage fault: kernel will exit.\n");
 	__asm__ volatile("cli; hlt");
+}
+
+void *map_phys_obj(void *obj, size_t size) {
+	void *limit        = obj + size;
+	vaddr_t first_page = ALIGN_PG_DOWN(obj);
+	vaddr_t limit_page = ALIGN_PG_UP(limit);
+	void *region =
+	    kmalloc_aligned_multi((limit_page - first_page) / PAGE_SIZE);
+	for (vaddr_t v = first_page; v < limit_page; v += PAGE_SIZE) {
+		map_page((vaddr_t)region + v - first_page, v);
+	}
+	return region + ((vaddr_t)obj % PAGE_SIZE);
 }

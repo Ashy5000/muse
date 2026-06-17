@@ -33,5 +33,6 @@ paddr_t create_task_directory(func_ptr_t func_ptr, bool user,
                               struct scroll *first_scr);
 paddr_t create_kernel_directory(func_ptr_t func_ptr, struct scroll *first_scr);
 void free_lower_half();
+void *map_phys_obj(void *obj, size_t size);
 
 #endif

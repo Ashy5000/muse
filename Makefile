@@ -68,7 +68,7 @@ run: build
 debug: build
 	qemu-system-i386 -drive format=raw,file=$(BUILD_DIR)/disk.img \
 	-drive if=pflash,format=raw,readonly=on,file=$(DEPS_DIR)/bios32.bin \
-	-no-reboot -no-shutdown -s -S
+	-no-reboot -no-shutdown -s -S -d int
 
 clean:
 	rm -rf $(BUILD_DIR)/*.o
@@ -88,6 +88,7 @@ $(BUILD_DIR)/rootfs.img: fs/bin/muse
 	mke2fs -t ext2 -F $@
 	e2mkdir $@:/bin
 	e2cp $< $@:/bin
+	e2cp fs/bin/test.o $@:/bin
 
 $(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
 	truncate -s 64M $@
@@ -137,4 +138,4 @@ $(BUILD_DIR)/%.o: %.asm
 $(LIB_DIR)/%.o: $(RUNTIME_SRC)/%.asm
 	$(assemble)
 
-libc: $(LIBC_PATH)
+libc: $(INCLUDE_DIR) $(LIBC_PATH)

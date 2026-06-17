@@ -1,10 +1,12 @@
 #include <muse/acpi.h>
+#include <muse/alloc.h>
 #include <muse/apic.h>
 #include <muse/logging.h>
+#include <muse/paging.h>
+#include <muse/trampoline.h>
 
 __attribute__((nonstring)) char rsdp_signature[8] = "RSD PTR ";
 
-struct rsdp *rsdp_global;
 void *rsdt_global;
 
 struct rsdp *find_rsdp(struct multiboot_tag_old_acpi *tag_acpi) {
@@ -50,13 +52,13 @@ bool verify_rsdp(struct rsdp *rsdp) {
 	return true;
 }
 
-void *find_rsdt() {
-	if (rsdp_global->revision == 0) {
+void *find_rsdt(struct rsdp *rsdp) {
+	if (rsdp->revision == 0) {
 		// v1.0
-		return (struct rsdt *)(uintptr_t)(rsdp_global->rsdt_address);
+		return (struct rsdt *)(uintptr_t)(rsdp->rsdt_address);
 	} else {
 		// v2.0+
-		return (struct xsdt *)(uintptr_t)(rsdp_global->xsdt_address);
+		return (struct xsdt *)(uintptr_t)(rsdp->xsdt_address);
 	}
 }
 
@@ -90,11 +92,25 @@ bool verify_sdt(void *sdt) {
 	return sum == 0;
 }
 
-void init_acpi(struct multiboot_tag_old_acpi *tag_acpi) {
-	rsdp_global = find_rsdp(tag_acpi);
-	if (!rsdp_global) {
-		log(LOG_ERROR, LOG_ACPI, "Failed to find RSDP!\n");
-		return;
+extern struct trampoline_info *t_info;
+
+void reinit_acpi() {
+	rsdt_global = map_phys_obj(t_info->acpi_rsdt, t_info->rsdt_len);
+	struct rsdt *rsdt_struct = rsdt_global;
+	uint32_t entries =
+	    (rsdt_struct->header.length - sizeof(struct acpi_sdt_header)) /
+	    sizeof(uint32_t);
+	for (uint32_t i = 0; i < entries; i++) {
+		struct acpi_sdt_header *header = map_phys_obj(
+		    (void *)(paddr_t)rsdt_struct->sdt_ptrs[i], sizeof(*header));
+		size_t len = header->length;
+		for (vaddr_t v = ALIGN_PG_DOWN(header);
+		     v < ALIGN_PG_UP((void *)header + sizeof(*header));
+		     v += PAGE_SIZE) {
+			unmap_page(v);
+			kfree((void *)v);
+		}
+		rsdt_struct->sdt_ptrs[i] = (uintptr_t)map_phys_obj(
+		    (void *)(paddr_t)rsdt_struct->sdt_ptrs[i], len);
 	}
-	rsdt_global = find_rsdt();
 }

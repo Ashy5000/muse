@@ -31,25 +31,19 @@ void init_hpet() {
 	    (uintptr_t)hpet_global);
 
 	// Get the base address of the registers
-	hpet_base = (void *)(uintptr_t)hpet_global->address.address;
+	void *base_old = (void *)(uintptr_t)hpet_global->address.address;
+	hpet_base      = map_phys_obj(base_old, 0x117);
+
 	uint32_t *general_capabilities = hpet_base;
 	uint8_t timer_count = ((general_capabilities[0] >> 8) & 0x1f) + 1;
 
-	uint32_t hpet_limit =
-	    (uintptr_t)hpet_base + 0x117 + 0x20 * (timer_count - 1);
-	uint32_t hpet_pages_start =
-	    (uintptr_t)hpet_base - ((uintptr_t)hpet_base % PAGE_SIZE);
-	uint32_t hpet_pages_end = hpet_limit;
-	if (hpet_limit % PAGE_SIZE > 0) {
-		hpet_pages_end += PAGE_SIZE - (hpet_pages_end % PAGE_SIZE);
-	}
-	hpet_scr.type                 = SCROLL_ALIGNED;
-	hpet_scr.vaddr                = hpet_pages_start;
-	hpet_scr.aligned_backend.page = hpet_pages_start;
-	hpet_scr.size                 = hpet_pages_end - hpet_pages_start;
-	reserve_scroll(&hpet_scr);
+	unmap_page((vaddr_t)hpet_base);
+	kfree(hpet_base);
 
-	tick_period = general_capabilities[1];
+	hpet_base = map_phys_obj(base_old, 0x117 + 0x20 * timer_count);
+
+	general_capabilities = hpet_base;
+	tick_period          = general_capabilities[1];
 
 	stop_hpet();
 

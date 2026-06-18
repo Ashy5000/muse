@@ -1,5 +1,6 @@
 #include <muse/elf.h>
 #include <muse/elf_kernel.h>
+#include <muse/scheduler.h>
 #include <muse/userspace.h>
 
 void load_elf_user(char *path, uint32_t argc, char **argv,
@@ -9,9 +10,11 @@ void load_elf_user(char *path, uint32_t argc, char **argv,
 	if (!elf.present) {
 		return;
 	}
+	lock_scheduler();
 	load_user_call_info((func_ptr_t)(uintptr_t)elf.header->entry_point,
 	                    argc, argv);
 	load_elf_data(elf);
 	create_context(enter_ring3, 1, true, elf.first_scr, elf.limit, stdin,
 	               stdout, stderr);
+	unlock_scheduler();
 }

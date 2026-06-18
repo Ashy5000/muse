@@ -6,6 +6,7 @@
 #include <muse/context.h>
 #include <muse/elf_user.h>
 #include <muse/gdt.h>
+#include <muse/hpet.h>
 #include <muse/interrupts.h>
 #include <muse/logging.h>
 #include <muse/pci.h>
@@ -27,6 +28,12 @@ struct trampoline_info *t_info = 0;
 struct gdt_descriptor gdt_desc;
 
 #define KERNEL_ALIGNED_HEAP_SIZE (1024 * PAGE_SIZE)
+
+void idle() {
+	for (;;) {
+		preempt();
+	}
+}
 
 int kmain() {
 	logging_enabled = false;
@@ -97,6 +104,7 @@ int kmain() {
 
 	reinit_acpi();
 
+	init_hpet();
 	init_idt();
 	init_pic();
 	init_apic();
@@ -109,10 +117,12 @@ int kmain() {
 	init_first_ctx();
 	init_syscalls();
 	init_root_term();
+	lock_scheduler();
+	create_context(idle, 1, false, 0, 0, root_term, root_term, root_term);
+	unlock_scheduler();
 	load_elf_user("/ext2/bin/test.o", 0, 0, root_term, root_term,
 	              root_term);
 	log(LOG_INFO, LOG_KERNEL, "Loaded mused.\n");
-	preempt();
 
 	for (;;) {
 		__asm__ volatile("hlt");

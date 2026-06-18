@@ -86,4 +86,5 @@ void init_first_ctx() {
 	active_ctx->id       = ctx_id++;
 	active_ctx->next     = 0;
 	active_ctx->priority = 1;
+	__asm__ volatile("mov %%cr3, %0" : "=g"(active_ctx->page_directory));
 }

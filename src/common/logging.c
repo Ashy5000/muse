@@ -80,6 +80,9 @@ void vlog(enum log_level level, enum log_class lclass, const char *fmt,
 	case LOG_PIC:
 		kprintf("pic: ");
 		break;
+	case LOG_PS2:
+		kprintf("ps/2: ");
+		break;
 	case LOG_HPET:
 		kprintf("hpet: ");
 		break;

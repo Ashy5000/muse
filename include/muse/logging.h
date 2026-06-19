@@ -23,6 +23,7 @@ enum log_class {
 	LOG_PAGING,
 	LOG_PCI,
 	LOG_PIC,
+	LOG_PS2,
 	LOG_HPET,
 	LOG_SYSCALL,
 	LOG_TERM,

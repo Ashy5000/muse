@@ -8,9 +8,9 @@ struct vga_cursor {
 	unsigned int y;
 };
 
-struct vga_cursor cursor;
-struct lock_reentrant console_lock;
-extern struct vga_framebuffer fb;
+volatile struct vga_cursor cursor;
+volatile struct lock_reentrant console_lock;
+extern volatile struct vga_framebuffer fb;
 extern const char psf_file[];
 #define CONSOLE_W (fb.width / ((struct psf_font *)psf_file)->width)
 #define CONSOLE_H (fb.height / ((struct psf_font *)psf_file)->height)
@@ -39,6 +39,7 @@ void console_put_char(char c, color_t color) {
 		} else {
 			scroll(((struct psf_font *)psf_file)->height);
 		}
+		lock_reentrant_release(&console_lock);
 		return;
 	}
 	psf_put_char(c, cursor.x, cursor.y, color);
@@ -51,14 +52,11 @@ void console_put_char(char c, color_t color) {
 }
 
 void kprint_fancy(const char *str, color_t color) {
-	lock_reentrant_acquire(
-	    &console_lock); /* Keep the console transaction atomic */
 	int i = 0;
 	while (str[i] != 0) {
 		console_put_char(str[i], color);
 		i++;
 	}
-	lock_reentrant_release(&console_lock);
 }
 
 #define kprint(S) kprint_fancy(S, 0xFFFFFF)
@@ -71,7 +69,6 @@ unsigned int nth_digit(unsigned int x, unsigned int digit, unsigned int base) {
 }
 
 void kprint_int_fancy(int x, int base, color_t color) {
-	lock_reentrant_acquire(&console_lock);
 	if (x == 0) {
 		console_put_char('0', color);
 		return;
@@ -90,7 +87,6 @@ void kprint_int_fancy(int x, int base, color_t color) {
 			}
 		}
 	}
-	lock_reentrant_release(&console_lock);
 }
 
 bool inrange(int base, int exp) {
@@ -105,7 +101,6 @@ bool inrange(int base, int exp) {
 }
 
 void kprint_int_full_fancy(int x, int base, color_t color) {
-	lock_reentrant_acquire(&console_lock);
 	for (int i = 0; i < base; i++) {
 		if (!inrange(base, base - 1 - i)) {
 			continue;
@@ -117,7 +112,6 @@ void kprint_int_full_fancy(int x, int base, color_t color) {
 			console_put_char('A' + digit - 10, color);
 		}
 	}
-	lock_reentrant_release(&console_lock);
 }
 
 enum fmt_specifier {
@@ -140,7 +134,6 @@ enum fmt_specifier consume_specifier(const char *fmt) {
 }
 
 void kvprintf_fancy(const char *fmt, color_t color, va_list args) {
-	lock_reentrant_acquire(&console_lock);
 	while (*fmt) {
 		if (*fmt == '%') {
 			fmt++;
@@ -166,7 +159,6 @@ void kvprintf_fancy(const char *fmt, color_t color, va_list args) {
 		}
 		fmt++;
 	}
-	lock_reentrant_release(&console_lock);
 }
 
 void kprintf(const char *fmt, ...) {

@@ -1,5 +1,7 @@
 #include <muse/apic.h>
 #include <muse/io.h>
+#include <muse/logging.h>
+#include <muse/ps2.h>
 #include <muse/term.h>
 #include <muse/text.h>
 
@@ -191,7 +193,7 @@ unsigned char keycode_to_char(unsigned char keycode) {
 	}
 }
 
-void handle_keypress_inner(void) {
+void handle_keypress_inner() {
 	unsigned char scan_code = inb(0x60);
 	unsigned char character = keycode_to_char(scan_code);
 	if (character != 0) {
@@ -200,6 +202,19 @@ void handle_keypress_inner(void) {
 		                character); /* TODO: Use ringbuffer */
 	}
 	eoi();
+}
+
+void init_keyboard() {
+	/* Set scan code set */
+	ps2_send_0(0xF0);
+	ps2_send_0(1);
+	PS2_POLL_READ;
+	uint8_t res = inb(PS2_DATA);
+	if (res != 0xFA) {
+		log(LOG_ERROR, LOG_PS2,
+		    "PS/2 keyboard initialization failed! Got %x.\n", res);
+		__asm__ volatile("cli; hlt");
+	}
 }
 
 __asm__(".globl handle_keypress;"

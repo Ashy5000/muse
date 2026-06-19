@@ -2,7 +2,7 @@
 #include <muse/scheduler.h>
 #include <muse/sleep.h>
 
-struct context *first_sleeping_ctx;
+struct context *first_sleeping_ctx = 0;
 
 extern struct context *last_ctx;
 extern struct context *active_ctx;
@@ -34,7 +34,6 @@ void sleep_millis(uint32_t millis) {
 	first_sleeping_ctx        = active_ctx;
 	first_sleeping_ctx->alarm = millis;
 	schedule();
-	unlock_scheduler();
 }
 
 void sleep_secs(uint32_t seconds) { sleep_millis(seconds * 1000); }

@@ -1,6 +1,7 @@
-#include <muse/sync.h>
 #include <muse/context.h>
 #include <muse/logging.h>
+#include <muse/scheduler.h>
+#include <muse/sync.h>
 #include <stdbool.h>
 
 /* SIMPLE LOCKS:
@@ -8,11 +9,15 @@
  * locked or unlocked. That's it! */
 
 void lock_simple_acquire(volatile struct lock_simple *lock) {
+	lock_scheduler();
 	uint32_t expected = 0;
 	while (!__atomic_compare_exchange_n(&lock->stat, &expected, LSTAT_WRITE,
 	                                    false, __ATOMIC_RELAXED,
 	                                    __ATOMIC_RELAXED)) {
+		expected = 0;
+		preempt();
 	}
+	unlock_scheduler();
 }
 
 void lock_simple_release(volatile struct lock_simple *lock) { lock->stat = 0; }
@@ -27,23 +32,30 @@ void lock_simple_release(volatile struct lock_simple *lock) { lock->stat = 0; }
 extern struct context *active_ctx;
 
 void lock_reentrant_acquire(volatile struct lock_reentrant *lock) {
+	lock_scheduler();
 	if (lock->owner == active_ctx->id) {
 		lock->cnt++;
+		unlock_scheduler();
 		return;
 	}
 	uint32_t expected = 0;
 	while (!__atomic_compare_exchange_n(
 	    &lock->owner, &expected, active_ctx->id, false, __ATOMIC_RELAXED,
 	    __ATOMIC_RELAXED)) {
+		expected = 0;
+		preempt();
 	}
 	lock->cnt = 1;
+	unlock_scheduler();
 }
 
 void lock_reentrant_release(volatile struct lock_reentrant *lock) {
+	lock_scheduler();
 	lock->cnt--;
 	if (!lock->cnt) {
 		lock->owner = 0;
 	}
+	unlock_scheduler();
 }
 
 /* MULTI-LOCKS:
@@ -61,13 +73,17 @@ void lock_multi_acquire_read(volatile struct lock_multi *lock) {
 	       !__atomic_compare_exchange_n(&lock->stat, &expected, LSTAT_READ,
 	                                    false, __ATOMIC_RELAXED,
 	                                    __ATOMIC_RELAXED)) {
+		expected = 0;
 	}
 }
 
 void lock_multi_wait(volatile struct lock_multi *lock) {
+	lock_scheduler();
 	while (lock->stat == LSTAT_READ) {
+		preempt();
 	}
 	__atomic_add_fetch(&lock->waiting_readers, 1, __ATOMIC_RELAXED);
+	unlock_scheduler();
 	while (lock->stat != LSTAT_READ) {
 	}
 }
@@ -83,9 +99,7 @@ void lock_multi_acquire_write(volatile struct lock_multi *lock) {
 	while (!__atomic_compare_exchange_n(&lock->stat, &expected, LSTAT_WRITE,
 	                                    false, __ATOMIC_RELAXED,
 	                                    __ATOMIC_RELAXED)) {
-		if (lock->stat == LSTAT_READ) {
-			return;
-		}
+		expected = 0;
 	}
 }
 
@@ -94,11 +108,13 @@ void lock_multi_signal(volatile struct lock_multi *lock) {
 		THERE_ARE_FOUR_LIGHTS(
 		    "a lock not held by a writer attempted to signal readers");
 	}
+	lock_scheduler();
 	if (lock->waiting_readers) {
 		lock->stat = LSTAT_READ;
 		return;
 	}
 	lock->stat = 0;
+	unlock_scheduler();
 }
 
 void lock_multi_release_write(volatile struct lock_multi *lock) {

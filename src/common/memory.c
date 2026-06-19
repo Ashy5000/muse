@@ -46,6 +46,7 @@ void *kpage_alloc() {
 			    0) {
 				t_info->regions[i].bitmap[idx / 8] |=
 				    1 << (idx % 8);
+				lock_simple_release(&bitmap_lock);
 				return (void *)addr;
 			}
 			idx++;
@@ -75,6 +76,7 @@ void kpage_set_status(paddr_t addr, bool free) {
 			return;
 		}
 	}
+	lock_simple_release(&bitmap_lock);
 }
 
 struct scroll *rsvd_scrolls = 0;

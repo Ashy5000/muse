@@ -8,9 +8,11 @@
 #include <muse/gdt.h>
 #include <muse/hpet.h>
 #include <muse/interrupts.h>
+#include <muse/keyboard.h>
 #include <muse/logging.h>
 #include <muse/pci.h>
 #include <muse/pic.h>
+#include <muse/ps2.h>
 #include <muse/psf.h>
 #include <muse/scheduler.h>
 #include <muse/syscall.h>
@@ -103,6 +105,8 @@ int kmain() {
 	log(LOG_INFO, LOG_KERNEL, "Main kernel loaded and initialized!\n");
 
 	reinit_acpi();
+	init_ps2();
+	init_keyboard();
 
 	init_hpet();
 	init_idt();

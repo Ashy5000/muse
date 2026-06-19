@@ -14,6 +14,7 @@
 #include <muse/trampoline.h>
 
 extern struct vga_framebuffer fb;
+extern uint32_t irq_disable_counter;
 
 /* The trampoline_info structure is located at the very start of memory. */
 struct trampoline_info *t_info = (struct trampoline_info *)0x0;
@@ -23,6 +24,7 @@ void trampoline_main(void *multiboot, uint32_t magic) {
 		__asm__ volatile("hlt");
 	}
 
+	irq_disable_counter = 1;
 	init_first_ctx();
 
 	struct multiboot_tag_framebuffer *tag_fb =

@@ -111,6 +111,7 @@ void lock_multi_signal(volatile struct lock_multi *lock) {
 	lock_scheduler();
 	if (lock->waiting_readers) {
 		lock->stat = LSTAT_READ;
+		unlock_scheduler();
 		return;
 	}
 	lock->stat = 0;

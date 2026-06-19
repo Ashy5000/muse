@@ -1,3 +1,34 @@
-A hobby kernel and bootloader. Supports interrupts, paging, memory allocation, and a basic scheduler. Regularly tested on both QEMU and BOCHS emulators.
+A hobby OS, purely for the purpose of having fun and learning stuff (handwritten for this reason).
 
-**WARNING: The compilation toolchain for this project is designed *exclusively* for Linux. Attempting to build this project on *any other OS* will (most likely) not work. There are GCC-specific compiler directives that will not work with other compilers, so `clang` or `nvcc` will not function properly.**
+**Features**
+- Memory management
+- Paging
+- Multiboot2
+- Prekernel
+- Higher-half kernel
+- Interrupts
+- Scheduling
+- Userspace
+- Synchronization primitives
+- VFS
+- Console w/ PSF font rendering
+
+**Drivers**
+- Ext2
+- ATA
+- HPET
+- PS/2 controller & keyboard
+- PCI
+- VGA framebuffer
+
+**Toolchain Dependencies**
+- Basic coreutils
+- Make
+- Cross-compiler for target architecture and OS
+- GRUB
+- EFI image
+- Filesystem utilities
+    - e2tools
+    - dosfstools
+    - mtools
+- QEMU (for testing in a VM)

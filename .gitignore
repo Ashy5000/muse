@@ -4,4 +4,6 @@
 fs/
 build/
 deps/
+zig-out/
+.zig-cache/
 bx_enh_dbg.ini

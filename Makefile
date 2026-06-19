@@ -1,6 +1,5 @@
 BUILD_DIR = build
 KERNEL_SRC = src/kernel
-TRAMPOLINE_SRC = src/trampoline
 COMMON_SRC = src/common
 LIBC_SRC = libc/lib
 RUNTIME_SRC = libc/runtime
@@ -20,7 +19,6 @@ CPY = $(CROSS_ROOT)/i686-muse-objcopy
 CFLAGS = -Wall -Wextra -Werror -O0
 
 KERNEL_C_SOURCES = $(wildcard $(KERNEL_SRC)/*.c)
-TRAMPOLINE_C_SOURCES = $(wildcard $(TRAMPOLINE_SRC)/*.c)
 COMMON_C_SOURCES = $(wildcard $(COMMON_SRC)/*.c)
 LIBC_C_SOURCES = $(wildcard $(LIBC_SRC)/*.c)
 ALL_SRC = $(KERNEL_C_SOURCES) $(KERNEL_ASM_SOURCES) $(LIBC_C_SOURCES) $(LIBC_ASM_SOURCES) $(RUNTIME_ASM_SOURCES)
@@ -31,13 +29,11 @@ LIBC_ASM_SOURCES = $(wildcard $(LIBC_SRC)/*.asm)
 RUNTIME_ASM_SOURCES = $(wildcard $(RUNTIME_SRC)/*.asm)
 
 KERNEL_DEPS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.d, $(KERNEL_C_SOURCES))
-TRAMPOLINE_DEPS = $(patsubst $(TRAMPOLINE_SRC)/%.c, $(BUILD_DIR)/$(TRAMPOLINE_SRC)/%.d, $(KERNEL_C_SOURCES))
 COMMON_DEPS = $(patsubst $(COMMON_SRC)/%.c, $(BUILD_DIR)/$(COMMON_SRC)/%.d, $(KERNEL_C_SOURCES))
 LIBC_DEPS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.d, $(LIBC_C_SOURCES))
 ALL_DEPS = $(KERNEL_DEPS) $(LIBC_DEPS)
 
 KERNEL_OBJS = $(patsubst $(KERNEL_SRC)/%.c, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_C_SOURCES)) $(patsubst $(KERNEL_SRC)/%.asm, $(BUILD_DIR)/$(KERNEL_SRC)/%.o, $(KERNEL_ASM_SOURCES))
-TRAMPOLINE_OBJS = $(patsubst $(TRAMPOLINE_SRC)/%.c, $(BUILD_DIR)/$(TRAMPOLINE_SRC)/%.o, $(TRAMPOLINE_C_SOURCES))
 COMMON_OBJS = $(patsubst $(COMMON_SRC)/%.c, $(BUILD_DIR)/$(COMMON_SRC)/%.o, $(COMMON_C_SOURCES)) $(patsubst $(COMMON_SRC)/%.asm, $(BUILD_DIR)/$(COMMON_SRC)/%.o, $(COMMON_ASM_SOURCES))
 LIBC_OBJS = $(patsubst $(LIBC_SRC)/%.c, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_C_SOURCES)) $(patsubst $(LIBC_SRC)/%.asm, $(BUILD_DIR)/$(LIBC_SRC)/%.o, $(LIBC_ASM_SOURCES))
 RUNTIME_OBJS = $(patsubst $(RUNTIME_SRC)/%.asm, $(LIB_DIR)/%.o, $(RUNTIME_ASM_SOURCES))
@@ -104,8 +100,9 @@ $(BUILD_DIR)/esp.img: $(BUILD_DIR)/muse $(BUILD_DIR)/BOOTIA32.EFI grub.cfg
 $(BUILD_DIR)/BOOTIA32.EFI:
 	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot2 configfile all_video
 
-$(BUILD_DIR)/muse: boot.o $(TRAMPOLINE_OBJS) $(COMMON_OBJS)
-	$(CC) -T linker/trampoline.ld -o $@ -O0 -ffreestanding -lgcc -nostdlib $^ -g
+$(BUILD_DIR)/muse:
+	zig build -Dtarget=x86-freestanding
+	cp zig-out/bin/muse_trampoline $@
 	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/trampoline.sym
 	$(CPY) --strip-debug $@
 

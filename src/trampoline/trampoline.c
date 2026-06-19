@@ -1,5 +1,3 @@
-#define TRAMPOLINE
-
 #include <muse/acpi.h>
 #include <muse/ata.h>
 #include <muse/context.h>

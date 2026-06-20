@@ -1,6 +1,7 @@
 const std = @import("std");
 const psf = @import("psf.zig");
 const display = @import("display.zig");
+const modules = @import("modules.zig");
 
 const Console = struct {
     d: *display.Display,
@@ -10,7 +11,7 @@ const Console = struct {
 
 var console: ?Console = null;
 
-const ConsoleInitError = psf.PSFInitError || display.DisplayInitError;
+pub const ConsoleInitError = psf.PSFInitError || display.DisplayInitError;
 
 const ConsolePrintError = error{
     ConsoleUninit,
@@ -88,12 +89,27 @@ pub fn print(comptime fmt: []const u8, args: anytype) void {
     console_writer.print(fmt, args) catch return;
 }
 
-pub fn init() ConsoleInitError!void {
-    try psf.init();
-    try display.init();
+pub fn hexdump(data: []const u8) void {
+    var offset: usize = 0;
+    while (offset < data.len) : (offset += 16) {
+        print("{x:0>8} ", .{@intFromPtr(@as([*]const u8, @ptrCast(data))) + offset});
+        for (0..@min(16, data.len - offset)) |i| {
+            print("{x:0>2} ", .{data[offset + i]});
+        }
+        print("\n", .{});
+    }
+}
+
+fn init() ConsoleInitError!void {
     console = .{
         .d = display.display_primary.?,
         .x = 0,
         .y = 0,
     };
 }
+
+pub var mod: modules.Module = .{
+    .name = "console",
+    .deps = @as([2]*modules.Module, .{ &psf.mod, &display.mod })[0..],
+    .init = init,
+};

@@ -1,5 +1,6 @@
 const std = @import("std");
 const vga = @import("video/vga.zig");
+const modules = @import("modules.zig");
 
 pub const Color = u24;
 
@@ -30,3 +31,8 @@ pub fn init() DisplayInitError!void {
     }
     return error.NoDisplays;
 }
+
+pub var mod: modules.Module = .{
+    .name = "display",
+    .init = init,
+};

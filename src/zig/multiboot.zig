@@ -1,3 +1,5 @@
+const modules = @import("modules.zig");
+
 pub const TagType = enum(u32) {
     end,
     cmdline,
@@ -46,6 +48,29 @@ pub const MultibootTagFramebuffer = struct {
     rsvd: u16,
 };
 
+pub const MultibootMmapType = enum(u32) {
+    available = 1,
+    reserved,
+    acpi_reclaimable,
+    nvs,
+    bad_ram,
+};
+
+pub const MultibootMmapEntry = struct {
+    addr: u64,
+    len: u64,
+    type: MultibootMmapType,
+    rsvd: u32,
+};
+
+pub const MultibootTagMmap = struct {
+    type: TagType = .mmap,
+    size: u32,
+    entry_size: u32,
+    version: u32,
+    first_entry: MultibootMmapEntry,
+};
+
 pub const MultibootInfo = struct {
     size: u32,
     rsvd: u32,
@@ -70,18 +95,11 @@ pub fn config(info: *MultibootInfo, magic: u32) void {
     multiboot_info = info;
 }
 
-pub fn init() MultibootInitError!void {
-    if ((multiboot_magic orelse return error.MultibootNoInfo) != multiboot2_magic) {
-        return error.MultibootInvalidMagic;
-    }
-    _ = multiboot_info orelse return error.MultibootNoInfo;
-}
-
 pub const MultibootTagError = error{
     MultibootTagNotFound,
 } || MultibootInfoError;
 
-pub fn multibootFindTag(res_type: type) MultibootTagError!*res_type {
+pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
     const struct_info = @typeInfo(res_type).@"struct";
     const field_type = struct_info.field_types[0];
     if (field_type != TagType) {
@@ -102,3 +120,15 @@ pub fn multibootFindTag(res_type: type) MultibootTagError!*res_type {
     }
     return error.MultibootTagNotFound;
 }
+
+pub fn init() modules.ModuleInitError!void {
+    if ((multiboot_magic orelse return error.MultibootNoInfo) != multiboot2_magic) {
+        return error.MultibootInvalidMagic;
+    }
+    _ = multiboot_info orelse return error.MultibootNoInfo;
+}
+
+pub var mod: modules.Module = .{
+    .name = "multiboot2",
+    .init = init,
+};

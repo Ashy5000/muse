@@ -1,4 +1,5 @@
 const display = @import("display.zig");
+const modules = @import("modules.zig");
 
 const psf_magic: u32 = 0x864AB572;
 
@@ -55,3 +56,8 @@ pub fn init() PSFInitError!void {
     }
     font = f;
 }
+
+pub var mod: modules.Module = .{
+    .name = "psf",
+    .init = init,
+};

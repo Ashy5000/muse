@@ -1,6 +1,7 @@
 *.o
 *.bin
 *.d
+*.psf
 fs/
 build/
 deps/

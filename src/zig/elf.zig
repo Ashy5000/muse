@@ -39,7 +39,7 @@ pub const ELFSectionHeader = extern struct {
 
 const elf_section_flag_alloc: u32 = 0x2;
 
-var trampoline_region: ?virtual.Vregion = null;
+pub var trampoline_region: ?virtual.Vregion = null;
 
 pub const ELFInitError = error{
     ELFNoSections,
@@ -64,8 +64,9 @@ fn init() modules.ModuleInitError!void {
     trampoline_region = .{
         .vaddr = start_res,
         .paddr = start_res,
-        .pg_cnt = (end_res - start_res) / paging.page_size,
+        .pg_cnt = (end_res - start_res + paging.page_size - 1) / paging.page_size,
     };
+    paging.register_region(&trampoline_region.?);
 }
 
 pub var mod: modules.Module = .{

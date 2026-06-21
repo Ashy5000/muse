@@ -1,5 +1,7 @@
 const multiboot = @import("../multiboot.zig");
 const display = @import("../display.zig");
+const virtual = @import("../virtual.zig");
+const paging = @import("../arch/x86/paging.zig");
 
 const Framebuffer = struct {
     bfr: [*]u8,
@@ -7,6 +9,8 @@ const Framebuffer = struct {
     height: usize,
     pitch: usize,
 };
+
+var fb_region: ?virtual.Vregion = null;
 
 var framebuffer: ?Framebuffer = null;
 
@@ -23,6 +27,12 @@ fn init() bool {
     display_vga.width = fb.width;
     display_vga.height = fb.height;
     framebuffer = fb;
+    fb_region = .{
+        .vaddr = @intFromPtr(fb.bfr),
+        .paddr = @intFromPtr(fb.bfr),
+        .pg_cnt = (fb.pitch * fb.height + paging.page_size - 1) / paging.page_size,
+    };
+    paging.register_region(&fb_region.?);
     fillRect(0, 0, fb.width, fb.height, 0x000000) catch return false;
     return true;
 }

@@ -1,5 +1,7 @@
 const pmm = @import("../../pmm.zig");
 const virtual = @import("../../virtual.zig");
+const elf = @import("../../elf.zig");
+const modules = @import("../../modules.zig");
 
 pub const page_size = 4096;
 
@@ -16,8 +18,8 @@ const pageDirectoryEntryFlags = packed struct {
 
 const pageDirectoryEntry = packed struct {
     flags: pageDirectoryEntryFlags,
-    available: u4,
-    addr_hi: u20,
+    available: u4 = 0,
+    addr_hi: u20 = 0,
 };
 
 const pageTableEntryFlags = packed struct {
@@ -34,8 +36,8 @@ const pageTableEntryFlags = packed struct {
 
 const pageTableEntry = packed struct {
     flags: pageTableEntryFlags,
-    available: u3,
-    addr_hi: u20,
+    available: u3 = 0,
+    addr_hi: u20 = 0,
 };
 
 const page_entries: usize = page_size / @sizeOf(pageDirectoryEntry);
@@ -49,9 +51,11 @@ fn initTable(directory: *[page_entries]pageDirectoryEntry, vaddr: u32, flags: pa
     }
     const table_addr: u32 = @intCast(try pmm.pmm_alloc());
     const table: *[page_entries]pageTableEntry = @ptrFromInt(table_addr);
-    @memset(table, 0);
+    @memset(table, .{
+        .flags = .{ .present = false },
+    });
     directory[idx].flags = flags;
-    directory[idx].addr_hi = table_addr >> 12;
+    directory[idx].addr_hi = @intCast(table_addr >> 12);
     return table;
 }
 
@@ -61,7 +65,7 @@ fn fillTableEntry(table: *[page_entries]pageTableEntry, vaddr: u32, paddr: u32, 
         return;
     }
     table[idx].flags = flags;
-    table[idx].addr_hi = paddr >> 12;
+    table[idx].addr_hi = @intCast(paddr >> 12);
 }
 
 // The following functions are to be called only when paging is not currently enabled, or when the entirety of memory is identity paged.
@@ -77,3 +81,36 @@ fn mapRegionInit(directory: *[page_entries]pageDirectoryEntry, vr: *virtual.Vreg
         try mapPageInit(directory, vr.vaddr + i * page_size, vr.paddr + i * page_size);
     }
 }
+
+var first_region: ?*virtual.Vregion = null;
+
+pub fn register_region(vr: *virtual.Vregion) void {
+    vr.next = first_region;
+    first_region = vr;
+}
+
+fn init() modules.ModuleInitError!void {
+    const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(try pmm.pmm_alloc());
+    @memset(directory, .{
+        .flags = .{ .present = false },
+    });
+    var region = first_region;
+    while (region) |vr| {
+        try mapRegionInit(directory, vr);
+        region = vr.next;
+    }
+    asm volatile (
+        \\ mov %[directory], %%cr3
+        \\ mov %%cr0, %%eax
+        \\ or $0x80000001, %%eax
+        \\ mov %%eax, %%cr0
+        :: [directory] "r" (directory),
+        : .{ .eax = true }
+    );
+}
+
+pub var mod: modules.Module = .{
+    .name = "paging",
+    .init = init,
+    .deps = &@as([2]*modules.Module, .{ &pmm.mod, &elf.mod }),
+};

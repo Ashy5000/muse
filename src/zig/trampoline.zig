@@ -3,8 +3,7 @@ const builtin = @import("builtin");
 const multiboot = @import("multiboot.zig");
 const modules = @import("modules.zig");
 const console = @import("console.zig");
-const pmm = @import("pmm.zig");
-const elf = @import("elf.zig");
+const paging = @import("arch/x86/paging.zig");
 const panic_mod = @import("panic.zig");
 
 pub const panic = std.debug.FullPanic(panic_mod.crashed);
@@ -13,12 +12,8 @@ export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_ma
     multiboot.config(multiboot_info, multiboot_magic);
 
     modules.loadModule(&modules.mod) catch asm volatile ("hlt");
-    modules.loadModule(&pmm.mod) catch {
+    modules.loadModule(&paging.mod) catch {
         console.print("Loading PMM failed!.\n", .{});
-        asm volatile ("hlt");
-    };
-    modules.loadModule(&elf.mod) catch {
-        console.print("Loading ELF failed!.\n", .{});
         asm volatile ("hlt");
     };
 

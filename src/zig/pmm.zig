@@ -18,8 +18,8 @@ pub fn pmm_alloc() PMMError!usize {
 
         for (0..bitmap_cnt) |j| {
             for (0..@bitSizeOf(bitmapUnit)) |k| {
-                if (((bitmap[j] >> k) & 1) == 0) {
-                    bitmap[j] |= 1 << k;
+                if (((bitmap[j] >> @intCast(k)) & 1) == 0) {
+                    bitmap[j] |= @as(bitmapUnit, 1) << @intCast(k);
                     return addr;
                 }
                 addr += paging.page_size;

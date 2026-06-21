@@ -1,4 +1,5 @@
 const modules = @import("modules.zig");
+const elf = @import("elf.zig");
 
 pub const TagType = enum(u32) {
     end,
@@ -25,9 +26,32 @@ pub const TagType = enum(u32) {
     load_base_addr,
 };
 
-const MultibootTag = struct {
+const MultibootTag = extern struct {
     tag_type: TagType,
     size: u32,
+};
+
+pub const MultibootMmapType = enum(u32) {
+    available = 1,
+    reserved,
+    acpi_reclaimable,
+    nvs,
+    bad_ram,
+};
+
+pub const MultibootMmapEntry = extern struct {
+    addr: u64,
+    len: u64,
+    type: MultibootMmapType,
+    rsvd: u32,
+};
+
+pub const MultibootTagMmap = extern struct {
+    type: TagType = .mmap,
+    size: u32,
+    entry_size: u32,
+    version: u32,
+    first_entry: MultibootMmapEntry,
 };
 
 const MultibootFramebufferType = enum(u8) {
@@ -36,7 +60,7 @@ const MultibootFramebufferType = enum(u8) {
     ega_text,
 };
 
-pub const MultibootTagFramebuffer = struct {
+pub const MultibootTagFramebuffer = extern struct {
     type: TagType = .framebuffer,
     size: u32,
     addr: u64,
@@ -48,30 +72,16 @@ pub const MultibootTagFramebuffer = struct {
     rsvd: u16,
 };
 
-pub const MultibootMmapType = enum(u32) {
-    available = 1,
-    reserved,
-    acpi_reclaimable,
-    nvs,
-    bad_ram,
-};
-
-pub const MultibootMmapEntry = struct {
-    addr: u64,
-    len: u64,
-    type: MultibootMmapType,
-    rsvd: u32,
-};
-
-pub const MultibootTagMmap = struct {
-    type: TagType = .mmap,
+pub const MultibootTagELFSections = extern struct {
+    tag: TagType = .elf_sections,
     size: u32,
-    entry_size: u32,
-    version: u32,
-    first_entry: MultibootMmapEntry,
+    num: u32,
+    entsize: u32,
+    shndx: u32,
+    first_section: elf.ELFSectionHeader,
 };
 
-pub const MultibootInfo = struct {
+pub const MultibootInfo = extern struct {
     size: u32,
     rsvd: u32,
     first_tag: MultibootTag,

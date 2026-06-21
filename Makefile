@@ -101,7 +101,7 @@ $(BUILD_DIR)/BOOTIA32.EFI:
 	grub-mkimage -p /boot/grub -O i386-efi -o $@ fat part_gpt ext2 multiboot2 configfile all_video
 
 $(BUILD_DIR)/muse:
-	zig build -Dtarget=x86-freestanding
+	zig build -Doptimize=ReleaseSafe
 	cp zig-out/bin/muse_trampoline $@
 	$(CPY) --only-keep-debug $@ $(BUILD_DIR)/trampoline.sym
 	$(CPY) --strip-debug $@

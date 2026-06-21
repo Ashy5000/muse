@@ -110,6 +110,6 @@ fn init() ConsoleInitError!void {
 
 pub var mod: modules.Module = .{
     .name = "console",
-    .deps = @as([2]*modules.Module, .{ &psf.mod, &display.mod })[0..],
+    .deps = &@as([2]*modules.Module, .{ &psf.mod, &display.mod }),
     .init = init,
 };

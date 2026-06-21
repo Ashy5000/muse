@@ -1,7 +1,7 @@
 const multiboot = @import("multiboot.zig");
 const console = @import("console.zig");
 const global = @import("global.zig");
-const paging = @import("paging.zig");
+const paging = @import("arch/x86/paging.zig");
 const modules = @import("modules.zig");
 
 pub const MmapInitError = console.ConsoleInitError || multiboot.MultibootInitError || multiboot.MultibootTagError;
@@ -17,6 +17,7 @@ pub fn init() modules.ModuleInitError!void {
         global.info.regions[idx] = .{
             .start = @intCast(entry.addr),
             .pg_cnt = @intCast(entry.len / paging.page_size),
+            .bitmap = null,
         };
         entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);
         idx += 1;

@@ -1,6 +1,6 @@
 const console = @import("console.zig");
 
-pub const ModuleInitError = error{} || @import("console.zig").ConsoleInitError || @import("psf.zig").PSFInitError || @import("display.zig").DisplayInitError || @import("multiboot.zig").MultibootInitError || @import("mmap.zig").MmapInitError;
+pub const ModuleInitError = error{} || @import("console.zig").ConsoleInitError || @import("psf.zig").PSFInitError || @import("display.zig").DisplayInitError || @import("multiboot.zig").MultibootInitError || @import("mmap.zig").MmapInitError || @import("pmm.zig").PMMError || @import("elf.zig").ELFInitError;
 
 fn initEmpty() !void {}
 
@@ -23,15 +23,16 @@ pub fn loadModule(m: *Module) ModuleInitError!void {
     }
     for (m.deps) |module| {
         depth += 1;
-        loadModule(module) catch |err| {
-            for (0..depth) |_| {
-                console.print(" |", .{});
-            }
-            console.print("ERROR: {s}\n", .{@errorName(err)});
-        };
+        try loadModule(module);
         depth -= 1;
     }
-    try m.init();
+    m.init() catch |err| {
+        for (0..depth) |_| {
+            console.print(" |", .{});
+        }
+        console.print("ERROR: {s}\n", .{@errorName(err)});
+        return err;
+    };
     m.inited = true;
 }
 

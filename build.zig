@@ -1,6 +1,24 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+fn fatMkdir(b: *std.Build, esp: std.Build.LazyPath, comptime path: []const u8) *std.Build.Step.Run {
+    const step = b.addSystemCommand(&.{"mmd"});
+    step.addArgs(&.{"-i"});
+    step.addFileArg(esp);
+    step.addArg("::" ++ path);
+    return step;
+}
+
+fn fatCpy(b: *std.Build, esp: std.Build.LazyPath, src: std.Build.LazyPath, comptime path: []const u8) *std.Build.Step.Run {
+    const step = b.addSystemCommand(&.{"mcopy"});
+    step.addArgs(&.{"-i"});
+    step.addFileArg(esp);
+    step.addFileArg(src);
+    step.addArg("::" ++ path);
+    step.addFileInput(src);
+    return step;
+}
+
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const Target = std.Target.x86;
@@ -18,6 +36,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .code_model = .kernel,
     });
+
     switch (target.result.cpu.arch) {
         .x86_64 => mod.addAssemblyFile(b.path("boot64.S")),
         .x86 => mod.addAssemblyFile(b.path("boot32.S")),
@@ -31,6 +50,123 @@ pub fn build(b: *std.Build) void {
     exe.setLinkerScript(b.path("linker/trampoline.ld"));
     exe.use_llvm = true;
     exe.use_lld = true;
+
+    const wf = b.addWriteFiles();
+    const efi = wf.add("artifacts/BOOTIA32.EFI", &.{});
+
+    const grub_step = b.addSystemCommand(&.{"grub-mkimage"});
+    grub_step.addArgs(&.{
+        "-p",
+        "/boot/grub",
+        "-O",
+        "i386-efi",
+        "-o",
+    });
+    grub_step.addFileArg(efi);
+    grub_step.addArgs(&.{
+        "fat",
+        "part_gpt",
+        "ext2",
+        "multiboot2",
+        "configfile",
+        "all_video",
+    });
+
+    const esp = wf.add("artifacts/esp.img", &.{});
+
+    const esp_truncate_step = b.addSystemCommand(&.{"truncate"});
+    esp_truncate_step.addArgs(&.{ "-s", "64M" });
+    esp_truncate_step.addFileArg(esp);
+
+    const esp_mkfs_step = b.addSystemCommand(&.{"mkfs.fat"});
+    esp_mkfs_step.addArgs(&.{"-F32"});
+    esp_mkfs_step.addFileArg(esp);
+    esp_mkfs_step.step.dependOn(&esp_truncate_step.step);
+
+    const mmd_step_0 = fatMkdir(b, esp, "/EFI");
+    mmd_step_0.step.dependOn(&esp_mkfs_step.step);
+
+    const mmd_step_1 = fatMkdir(b, esp, "/EFI/BOOT");
+    mmd_step_1.step.dependOn(&esp_mkfs_step.step);
+    mmd_step_1.step.dependOn(&mmd_step_0.step);
+
+    const mmd_step_2 = fatMkdir(b, esp, "/boot");
+    mmd_step_2.step.dependOn(&esp_mkfs_step.step);
+
+    const mmd_step_3 = fatMkdir(b, esp, "/boot/grub");
+    mmd_step_3.step.dependOn(&esp_mkfs_step.step);
+    mmd_step_3.step.dependOn(&mmd_step_2.step);
+
+    const mcopy_step_0 = fatCpy(b, esp, efi, "/EFI/BOOT/");
+    mcopy_step_0.step.dependOn(&mmd_step_1.step);
+    mcopy_step_0.step.dependOn(&grub_step.step);
+
+    const mcopy_step_1 = fatCpy(b, esp, b.path("grub.cfg"), "/boot/grub");
+    mcopy_step_1.step.dependOn(&mmd_step_3.step);
+
+    const mcopy_step_2 = fatCpy(b, esp, exe.getEmittedBin(), "/boot/muse");
+    mcopy_step_2.step.dependOn(&mmd_step_2.step);
+    mcopy_step_2.step.dependOn(b.getInstallStep());
+
+    const esp_step = b.addInstallFileWithDir(esp, .prefix, "esp.img");
+    esp_step.step.dependOn(&mcopy_step_0.step);
+    esp_step.step.dependOn(&mcopy_step_1.step);
+    esp_step.step.dependOn(&mcopy_step_2.step);
+
+    const disk = wf.add("artifacts/disk.img", &.{});
+
+    const disk_truncate_step = b.addSystemCommand(&.{"truncate"});
+    disk_truncate_step.addArgs(&.{ "-s", "128M" });
+    disk_truncate_step.addFileArg(disk);
+
+    const zap_step = b.addSystemCommand(&.{"sgdisk"});
+    zap_step.addFileArg(disk);
+    zap_step.addArgs(&.{"-Z"});
+    zap_step.step.dependOn(&disk_truncate_step.step);
+
+    const sgdisk_step = b.addSystemCommand(&.{"sgdisk"});
+    sgdisk_step.addFileArg(disk);
+    sgdisk_step.addArgs(&.{
+        "-n",
+        "1:2048:+64M",
+        "-t",
+        "1:ef00",
+        "-n",
+        "2:0:0",
+        "-t",
+        "2:8300",
+    });
+    sgdisk_step.step.dependOn(&zap_step.step);
+
+    const dd_step = b.addSystemCommand(&.{"dd"});
+    dd_step.addArgs(&.{
+        "bs=512",
+        "seek=2048",
+        "conv=notrunc",
+    });
+    dd_step.addPrefixedFileArg("if=", esp);
+    dd_step.addPrefixedFileArg("of=", disk);
+    dd_step.step.dependOn(&sgdisk_step.step);
+    dd_step.step.dependOn(&esp_step.step);
+
+    const img_step = b.step("img", "Build a bootable disk image with muse");
+    img_step.dependOn(&dd_step.step);
+
+    const qemu_step = b.addSystemCommand(&.{"qemu-system-i386"});
+    qemu_step.addArgs(&.{
+        "-drive",
+    });
+    qemu_step.addPrefixedFileArg("format=raw,file=", disk);
+    qemu_step.addArgs(&.{
+        "-drive",
+        "if=pflash,format=raw,readonly=on,file=deps/bios32.bin",
+        "-monitor",
+        "stdio",
+    });
+    qemu_step.step.dependOn(img_step);
+
+    const run_step = b.step("run", "Run muse in QEMU");
+    run_step.dependOn(&qemu_step.step);
 
     b.installArtifact(exe);
 }

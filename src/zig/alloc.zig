@@ -36,8 +36,6 @@ fn heapSbrk(heap: *Heap, inc: usize) ?[*]u8 {
     return prev_lim;
 }
 
-const console = @import("console.zig");
-
 fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: usize) ?[*]u8 {
     const heap: *Heap = @alignCast(@ptrCast(heap_opaque));
     const size: usize = @max(len + chunk_overhead, min_chunk_size);
@@ -95,7 +93,6 @@ fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: u
     }
     const prev_size_next: *align(1) usize = @ptrFromInt(@intFromPtr(heap.limit) - @sizeOf(usize));
     prev_size_next.* = n_ch.size;
-    console.print("Setting prev_size to 0x{x}.\n", .{prev_size_next.*});
     return @ptrFromInt(aligned_start);
 }
 
@@ -110,7 +107,6 @@ fn free(heap_opaque: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) v
     }
     if (ch.prev_size > 0) {
         const p_ch: *align(1) Chunk = @ptrFromInt(@intFromPtr(ch) - ch.prev_size);
-        console.print("prev_size: 0x{x}. p_ch: {*}.\n", .{ ch.prev_size, p_ch });
         if (p_ch.free) {
             p_ch.size += ch.size;
             ch = p_ch;

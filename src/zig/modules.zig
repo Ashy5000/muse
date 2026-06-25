@@ -17,10 +17,11 @@ pub fn loadModule(m: *Module) ModuleInitError!void {
     for (0..depth) |_| {
         console.print(" |", .{});
     }
-    console.print("-Loading module `{s}`.\n", .{m.name});
     if (m.inited) {
+        console.print("-`{s}` (skipped)\n", .{m.name});
         return;
     }
+    console.print("-`{s}`\n", .{m.name});
     for (m.deps) |module| {
         depth += 1;
         try loadModule(module);

@@ -1,18 +1,18 @@
 const multiboot = @import("multiboot.zig");
-const console = @import("console.zig");
 const global = @import("global.zig");
 const paging = @import("arch/x86/paging.zig");
 const modules = @import("modules.zig");
 
-pub const MmapInitError = console.ConsoleInitError || multiboot.MultibootInitError || multiboot.MultibootTagError;
+pub const MmapInitError = multiboot.MultibootTagError;
 
 pub fn init() modules.ModuleInitError!void {
     const tag = try multiboot.multibootFindTag(multiboot.MultibootTagMmap);
     var entry: *align(1) multiboot.MultibootMmapEntry = &tag.first_entry;
     var idx: usize = 0;
     while (@intFromPtr(entry) < @intFromPtr(tag) + tag.size and idx < global.info.regions.len) {
-        if (entry.type == .available) {
-            console.print("Found available mmap chunk from 0x{x}->0x{x}.\n", .{ entry.addr, entry.addr + entry.len });
+        if (entry.type != .available) {
+            entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);
+            continue;
         }
         global.info.regions[idx] = .{
             .start = @intCast(entry.addr),
@@ -27,6 +27,6 @@ pub fn init() modules.ModuleInitError!void {
 
 pub var mod: modules.Module = .{
     .name = "mmap",
-    .deps = @as([2]*modules.Module, .{ &console.mod, &multiboot.mod })[0..],
+    .deps = &@as([1]*modules.Module, .{&multiboot.mod}),
     .init = init,
 };

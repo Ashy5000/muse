@@ -54,19 +54,17 @@ fn init() modules.ModuleInitError!void {
         if ((h.section_type == .null) or (h.flags & elf_section_flag_alloc == 0)) {
             continue;
         }
-        console.print("Section from 0x{x}->0x{x}\n", .{ h.vaddr, h.vaddr + h.size });
         start = @min(start orelse std.math.maxInt(usize), h.vaddr);
         end = @max(end orelse 0, h.vaddr + h.size);
     }
     const start_res = start orelse return error.ELFNoSections;
     const end_res = end orelse return error.ELFNoSections;
-    console.print("Trampoline region from 0x{x}->0x{x}.\n", .{ start_res, end_res });
     trampoline_region = .{
         .vaddr = start_res,
         .paddr = start_res,
         .pg_cnt = (end_res - start_res + paging.page_size - 1) / paging.page_size,
     };
-    paging.register_region(&trampoline_region.?);
+    paging.registerRegion(&trampoline_region.?);
 }
 
 pub var mod: modules.Module = .{

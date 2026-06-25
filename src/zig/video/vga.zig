@@ -32,7 +32,7 @@ fn init() bool {
         .paddr = @intFromPtr(fb.bfr),
         .pg_cnt = (fb.pitch * fb.height + paging.page_size - 1) / paging.page_size,
     };
-    paging.register_region(&fb_region.?);
+    paging.registerRegion(&fb_region.?);
     fillRect(0, 0, fb.width, fb.height, 0x000000) catch return false;
     return true;
 }

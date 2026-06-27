@@ -44,9 +44,7 @@ pub fn put_char(d: *display.Display, char: u8, grid_x: usize, grid_y: usize, col
     }
 }
 
-pub const PSFInitError = display.DisplayInitError;
-
-pub fn init() PSFInitError!void {
+pub fn init() modules.ModuleInitError!void {
     const f = @as(*align(1) const Font, @ptrCast(font_file));
     if (f.magic != psf_magic) {
         @compileError("PSF file has invalid magic value");

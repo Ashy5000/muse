@@ -160,8 +160,10 @@ pub fn build(b: *std.Build) void {
     qemu_step.addArgs(&.{
         "-drive",
         "if=pflash,format=raw,readonly=on,file=deps/bios32.bin",
-        "-monitor",
-        "stdio",
+        "-d",
+        "int",
+        "-no-reboot",
+        "-no-shutdown",
     });
     qemu_step.step.dependOn(img_step);
 

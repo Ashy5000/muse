@@ -1,12 +1,18 @@
+const std = @import("std");
 const console = @import("console.zig");
 
-pub const ModuleInitError = error{} || @import("console.zig").ConsoleInitError || @import("psf.zig").PSFInitError || @import("display.zig").DisplayInitError || @import("multiboot.zig").MultibootInitError || @import("mmap.zig").MmapInitError || @import("pmm.zig").PMMError || @import("elf.zig").ELFInitError;
+pub const ModuleInitError = error{
+    ModuleInitFailure,
+    ModuleUnsupported,
+    ModuleMissingConfig,
+};
 
 fn initEmpty() !void {}
 
 pub const Module = struct {
     name: []const u8,
     inited: bool = false,
+    visited: bool = false,
     deps: []const *Module = @as([0]*Module, .{})[0..],
     init: *const fn () ModuleInitError!void = initEmpty,
 };
@@ -14,14 +20,17 @@ pub const Module = struct {
 var depth: u32 = 0;
 
 pub fn loadModule(m: *Module) ModuleInitError!void {
+    if (m.inited) {
+        return;
+    }
+    if (m.visited) {
+        std.debug.panic("dependency loop", .{});
+    }
+    m.visited = true;
     for (0..depth) |_| {
         console.print(" |", .{});
     }
-    if (m.inited) {
-        console.print("-`{s}` (skipped)\n", .{m.name});
-        return;
-    }
-    console.print("-`{s}`\n", .{m.name});
+    console.print("\\`{s}`\n", .{m.name});
     for (m.deps) |module| {
         depth += 1;
         try loadModule(module);
@@ -35,6 +44,12 @@ pub fn loadModule(m: *Module) ModuleInitError!void {
         return err;
     };
     m.inited = true;
+    if (m.deps.len > 0) {
+        for (0..depth) |_| {
+            console.print(" |", .{});
+        }
+        console.print("/\n", .{});
+    }
 }
 
 pub var mod: Module = .{

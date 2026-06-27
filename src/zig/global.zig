@@ -1,10 +1,11 @@
-const pmm = @import("pmm.zig");
+const pmm = @import("alloc/pmm.zig");
 const modules = @import("modules.zig");
+const bitmaps = @import("utils/bitmaps.zig");
 
 pub const Region = struct {
     start: usize,
     pg_cnt: usize,
-    bitmap: ?[*]pmm.bitmapUnit,
+    bitmap: ?[]bitmaps.BitmapUnit,
 };
 
 pub const CoreInfo = struct {

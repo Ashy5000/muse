@@ -15,8 +15,6 @@ var fb_region: ?virtual.Vregion = null;
 var framebuffer: ?Framebuffer = null;
 
 fn init() bool {
-    multiboot.init() catch return false;
-
     const vga_tag = multiboot.multibootFindTag(multiboot.MultibootTagFramebuffer) catch return false;
     const fb: Framebuffer = .{
         .bfr = @ptrFromInt(@as(usize, @intCast(vga_tag.addr))),

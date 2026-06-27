@@ -1,5 +1,9 @@
-const modules = @import("modules.zig");
+const std = @import("std");
+const paging = @import("arch.zig").paging;
 const elf = @import("elf.zig");
+const virtual = @import("virtual.zig");
+const acpi = @import("acpi.zig");
+const modules = @import("modules.zig");
 
 pub const TagType = enum(u32) {
     end,
@@ -73,12 +77,24 @@ pub const MultibootTagFramebuffer = extern struct {
 };
 
 pub const MultibootTagELFSections = extern struct {
-    tag: TagType = .elf_sections,
+    type: TagType = .elf_sections,
     size: u32,
     num: u32,
     entsize: u32,
     shndx: u32,
     first_section: elf.ELFSectionHeader,
+};
+
+pub const MultibootTagAcpiOld = extern struct {
+    type: TagType = .acpi_old,
+    size: u32,
+    rsdp: acpi.RSDPv1,
+};
+
+pub const MultibootTagAcpiNew = extern struct {
+    type: TagType = .acpi_new,
+    size: u32,
+    rsdp: acpi.RSDPv2,
 };
 
 pub const MultibootInfo = extern struct {
@@ -90,7 +106,7 @@ pub const MultibootInfo = extern struct {
 const multiboot2_magic: u32 = 0x36D76289;
 
 var multiboot_magic: ?u32 = null;
-var multiboot_info: ?*MultibootInfo = null;
+pub var multiboot_info: ?*MultibootInfo = null;
 
 const MultibootInfoError = error{
     MultibootNoInfo,
@@ -100,11 +116,6 @@ pub const MultibootInitError = error{
     MultibootInvalidMagic,
 } || MultibootInfoError;
 
-pub fn config(info: *MultibootInfo, magic: u32) void {
-    multiboot_magic = magic;
-    multiboot_info = info;
-}
-
 pub const MultibootTagError = error{
     MultibootTagNotFound,
 } || MultibootInfoError;
@@ -113,7 +124,7 @@ pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
     const struct_info = @typeInfo(res_type).@"struct";
     const field_type = struct_info.field_types[0];
     if (field_type != TagType) {
-        @compileError("Invalid multiboot tag struct: first field should be a TagType.");
+        @compileError("invalid multiboot tag struct: first field should be a TagType.");
     }
     const tag_type = struct_info.field_attrs[0].defaultValue(field_type);
     const info = multiboot_info orelse return error.MultibootNoInfo;
@@ -122,20 +133,33 @@ pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
         if (tag.tag_type == tag_type) {
             return @ptrCast(tag);
         }
-        var tag_addr = @intFromPtr(tag) + tag.size;
-        if (tag_addr % 8 > 0) {
-            tag_addr += 8 - (tag_addr % 8);
-        }
+        const tag_addr = std.mem.Alignment.forward(std.mem.Alignment.@"8", @intFromPtr(tag) + tag.size);
         tag = @ptrFromInt(tag_addr);
     }
     return error.MultibootTagNotFound;
 }
 
+pub fn config(info: *MultibootInfo, magic: u32) void {
+    multiboot_magic = magic;
+    multiboot_info = info;
+}
+
+var multiboot_region: ?virtual.Vregion = null;
+
 pub fn init() modules.ModuleInitError!void {
-    if ((multiboot_magic orelse return error.MultibootNoInfo) != multiboot2_magic) {
-        return error.MultibootInvalidMagic;
+    if ((multiboot_magic orelse return error.ModuleMissingConfig) != multiboot2_magic) {
+        return error.ModuleInitFailure;
     }
-    _ = multiboot_info orelse return error.MultibootNoInfo;
+    const info = multiboot_info orelse return error.ModuleMissingConfig;
+    const start = std.mem.Alignment.backward(paging.page_align, @intFromPtr(info));
+    const end = std.mem.Alignment.forward(paging.page_align, @intFromPtr(info) + info.size);
+    const pg_cnt = (end - start) / paging.page_size;
+    multiboot_region = .{
+        .vaddr = start,
+        .paddr = start,
+        .pg_cnt = pg_cnt,
+    };
+    paging.registerRegion(&multiboot_region.?);
 }
 
 pub var mod: modules.Module = .{

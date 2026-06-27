@@ -11,8 +11,6 @@ const Console = struct {
 
 var console: ?Console = null;
 
-pub const ConsoleInitError = psf.PSFInitError || display.DisplayInitError;
-
 const ConsolePrintError = error{
     ConsoleUninit,
 } || psf.PSFDrawError;
@@ -100,7 +98,7 @@ pub fn hexdump(data: []const u8) void {
     }
 }
 
-fn init() ConsoleInitError!void {
+fn init() modules.ModuleInitError!void {
     console = .{
         .d = display.display_primary.?,
         .x = 0,

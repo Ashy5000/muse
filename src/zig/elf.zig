@@ -41,12 +41,8 @@ const elf_section_flag_alloc: u32 = 0x2;
 
 pub var trampoline_region: ?virtual.Vregion = null;
 
-pub const ELFInitError = error{
-    ELFNoSections,
-} || multiboot.MultibootTagError;
-
 fn init() modules.ModuleInitError!void {
-    const elf_tag = try multiboot.multibootFindTag(multiboot.MultibootTagELFSections);
+    const elf_tag = multiboot.multibootFindTag(multiboot.MultibootTagELFSections) catch return error.ModuleUnsupported;
     const section_headers: []ELFSectionHeader = (@as([*]ELFSectionHeader, @ptrCast(&elf_tag.first_section)))[0..elf_tag.num];
     var start: ?usize = null;
     var end: ?usize = null;
@@ -57,8 +53,8 @@ fn init() modules.ModuleInitError!void {
         start = @min(start orelse std.math.maxInt(usize), h.vaddr);
         end = @max(end orelse 0, h.vaddr + h.size);
     }
-    const start_res = start orelse return error.ELFNoSections;
-    const end_res = end orelse return error.ELFNoSections;
+    const start_res = start orelse return error.ModuleInitFailure;
+    const end_res = end orelse return error.ModuleInitFailure;
     trampoline_region = .{
         .vaddr = start_res,
         .paddr = start_res,

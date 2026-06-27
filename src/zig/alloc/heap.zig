@@ -1,9 +1,8 @@
 const std = @import("std");
-const virtual = @import("virtual.zig");
-const modules = @import("modules.zig");
-const paging = @import("arch.zig").paging;
-const global = @import("global.zig");
-const elf = @import("elf.zig");
+const virtual = @import("../virtual.zig");
+const modules = @import("../modules.zig");
+const paging = @import("../arch.zig").paging;
+const elf = @import("../elf.zig");
 
 const min_chunk_size_log = 4;
 const min_chunk_size: usize = (1 << min_chunk_size_log);
@@ -152,9 +151,10 @@ pub fn allocator() AllocCreateError!std.mem.Allocator {
 }
 
 fn init() modules.ModuleInitError!void {
+    const region = elf.trampoline_region.?;
     global_heap = .{
-        .limit = @ptrFromInt(@intFromPtr(global.info) + global.info.size),
-        .max_limit = @ptrFromInt(elf.trampoline_region.?.vaddr + elf.trampoline_region.?.pg_cnt * paging.page_size),
+        .limit = @ptrFromInt(region.vaddr + region.pg_cnt * paging.page_size),
+        .max_limit = @ptrFromInt(1 << (@bitSizeOf(usize) - 1)),
         .size = 0,
         .free = 0,
         .tiers = @splat(null),
@@ -164,7 +164,7 @@ fn init() modules.ModuleInitError!void {
 }
 
 pub var mod: modules.Module = .{
-    .name = "alloc",
+    .name = "heap",
     .init = init,
-    .deps = &@as([3]*modules.Module, .{ &paging.mod, &elf.mod, &global.mod }),
+    .deps = &@as([2]*modules.Module, .{ &paging.mod, &elf.mod }),
 };

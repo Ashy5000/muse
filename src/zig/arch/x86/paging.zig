@@ -1,12 +1,14 @@
-//! Handles muse's paging system when building for x86. Some of the functions contained in this file are only used when paging is first initialized, and others are used throughout.
+//! Handles muse's paging system when building for x86. Some of the functions contained in this file are only used when paging is first initialized, and others are used throughout the lifetime of the OS.
 
-const pmm = @import("../../pmm.zig");
+const std = @import("std");
+const pmm = @import("../../alloc/pmm.zig");
 const virtual = @import("../../virtual.zig");
 const elf = @import("../../elf.zig");
 const console = @import("../../console.zig");
 const modules = @import("../../modules.zig");
 
-pub const page_size = 4096;
+pub const page_size: usize = 4096;
+pub const page_align = std.mem.Alignment.fromByteUnits(page_size);
 
 /// Flags for an entry into the root page directory.
 const pageDirectoryEntryFlags = packed struct {
@@ -124,19 +126,24 @@ pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
     }
 }
 
-pub fn getPageInfo(vaddr: usize) *pageTableEntry {
-    return @ptrFromInt(0xffc00000 + ((vaddr >> 10) & 0x3ff000));
+pub fn getPageInfo(vaddr: usize) ?*pageTableEntry {
+    const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(0xfffff000);
+    if (!directory[vaddr >> 22].flags.present) {
+        return null;
+    }
+    const table: *[page_entries]pageTableEntry = @ptrFromInt(0xffc00000 + ((vaddr >> 10) & 0x3ff000));
+    return &table[(vaddr >> 12) & 0x3ff];
 }
 
 /// Module init: Sets up paging structures containing all regions registered with `registerRegion()` and enables paging. Supports loopback.
 fn init() modules.ModuleInitError!void {
-    const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(try pmm.pmmAlloc());
+    const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(pmm.pmmAlloc() catch return error.ModuleInitFailure);
     @memset(directory, .{
         .flags = .{ .present = false },
     });
     var region = first_region;
     while (region) |vr| {
-        try mapRegionInit(directory, vr);
+        mapRegionInit(directory, vr) catch return error.ModuleInitFailure;
         region = vr.next;
     }
     directory[directory.len - 1].flags.present = true;

@@ -3,10 +3,8 @@ const global = @import("global.zig");
 const paging = @import("arch/x86/paging.zig");
 const modules = @import("modules.zig");
 
-pub const MmapInitError = multiboot.MultibootTagError;
-
 pub fn init() modules.ModuleInitError!void {
-    const tag = try multiboot.multibootFindTag(multiboot.MultibootTagMmap);
+    const tag = multiboot.multibootFindTag(multiboot.MultibootTagMmap) catch return error.ModuleUnsupported;
     var entry: *align(1) multiboot.MultibootMmapEntry = &tag.first_entry;
     var idx: usize = 0;
     while (@intFromPtr(entry) < @intFromPtr(tag) + tag.size and idx < global.info.regions.len) {

@@ -18,21 +18,18 @@ pub const Display = struct {
 
 pub var display_primary: ?*Display = null;
 
-pub const DisplayInitError = error{
-    NoDisplays,
-};
-
-pub fn init() DisplayInitError!void {
+pub fn init() modules.ModuleInitError!void {
     for (displays) |d| {
         if (d.init()) {
             display_primary = d;
             return;
         }
     }
-    return error.NoDisplays;
+    return error.ModuleInitFailure;
 }
 
 pub var mod: modules.Module = .{
     .name = "display",
     .init = init,
+    .deps = &@as([1]*modules.Module, .{&@import("multiboot.zig").mod}),
 };

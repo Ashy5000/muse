@@ -1,5 +1,7 @@
+const std = @import("std");
 const paging = @import("arch.zig").paging;
-const pmm = @import("pmm.zig");
+const pmm = @import("alloc/pmm.zig");
+const frames = @import("alloc/frames.zig");
 const modules = @import("modules.zig");
 
 pub const Vregion = struct {
@@ -12,16 +14,46 @@ pub const Vregion = struct {
 
 pub fn backSlice(s: []u8) pmm.PMMError!void {
     const start: usize = @intFromPtr(s.ptr);
-    var addr: usize = start - (start % paging.page_size);
+    var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
     while (addr < start + s.len) : (addr += paging.page_size) {
-        const info: *paging.pageTableEntry = paging.getPageInfo(addr);
+        const info: *paging.pageTableEntry = paging.getPageInfo(addr) orelse {
+            try paging.mapPage(addr, try pmm.pmmAlloc(), .{});
+            continue;
+        };
         if (!info.flags.present) {
             try paging.mapPage(addr, try pmm.pmmAlloc(), .{});
         }
     }
 }
 
-const mod: modules.Module = .{
+const MapError = pmm.PMMError || frames.FrameAllocError;
+
+pub fn mapPhysObj(s: []u8) MapError![]u8 {
+    const phys_start: usize = std.mem.Alignment.backward(paging.page_align, @intFromPtr(s.ptr));
+    const phys_end: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(s.ptr) + s.len);
+    const pg_cnt: usize = (phys_end - phys_start) / paging.page_size;
+    const virt_start: usize = @intFromPtr(try frames.frameAllocContig(pg_cnt));
+    const region: Vregion = .{
+        .vaddr = virt_start,
+        .paddr = phys_start,
+        .pg_cnt = pg_cnt,
+    };
+    try paging.mapRegion(&region);
+    const offset = @intFromPtr(s.ptr) - phys_start;
+    const res_ptr: [*]u8 = @ptrFromInt(virt_start + offset);
+    return res_ptr[0..s.len];
+}
+
+pub fn unmapPhysObj(s: []u8) void {
+    const virt_start: usize = std.mem.Alignment.backward(paging.page_align, @intFromPtr(s.ptr));
+    const virt_end: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(s.ptr) + s.len);
+    var addr: usize = virt_start;
+    while (addr < virt_end) : (addr += paging.page_size) {
+        frames.frameFree(@ptrFromInt(addr));
+    }
+}
+
+pub var mod: modules.Module = .{
     .name = "virtual",
-    .deps = &@as([2]modules.Module, .{ &pmm.mod, &paging.mod }),
+    .deps = &@as([2]*modules.Module, .{ &pmm.mod, &paging.mod }),
 };

@@ -18,7 +18,7 @@ pub const Display = struct {
 
 pub var display_primary: ?*Display = null;
 
-pub fn init() modules.ModuleInitError!void {
+fn init() modules.ModuleInitError!void {
     for (displays) |d| {
         if (d.init()) {
             display_primary = d;

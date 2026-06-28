@@ -29,7 +29,7 @@ fn heapSbrk(heap: *Heap, inc: usize) ?[*]u8 {
     if (@intFromPtr(prev_lim) + inc > @intFromPtr(heap.max_limit)) {
         return null;
     }
-    virtual.backSlice(heap.limit[0..inc]) catch return null;
+    virtual.backSlice(heap.limit[0..inc], .{}) catch return null;
     heap.limit += inc;
     heap.size += inc;
     return prev_lim;

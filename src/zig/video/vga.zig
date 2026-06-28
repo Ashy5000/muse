@@ -29,6 +29,9 @@ fn init() bool {
         .vaddr = @intFromPtr(fb.bfr),
         .paddr = @intFromPtr(fb.bfr),
         .pg_cnt = (fb.pitch * fb.height + paging.page_size - 1) / paging.page_size,
+        .flags = .{
+            .cache_mode = .WriteCombining,
+        },
     };
     paging.registerRegion(&fb_region.?);
     fillRect(0, 0, fb.width, fb.height, 0x000000) catch return false;

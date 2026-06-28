@@ -5,6 +5,7 @@ const pmm = @import("../../alloc/pmm.zig");
 const virtual = @import("../../virtual.zig");
 const elf = @import("../../elf.zig");
 const console = @import("../../console.zig");
+const msr = @import("../../utils/msr.zig");
 const modules = @import("../../modules.zig");
 
 pub const page_size: usize = 4096;
@@ -35,11 +36,11 @@ pub const pageTableEntryFlags = packed struct {
     present: bool = true,
     write: bool = true,
     user: bool = false,
-    write_through: bool = false,
-    cache_disable: bool = false,
+    pat_2: bool = false,
+    pat_1: bool = false,
     accessed: bool = false,
     dirty: bool = false,
-    pat: bool = false,
+    pat_0: bool = false,
     global: bool = false,
 };
 
@@ -89,15 +90,16 @@ fn fillTableEntry(table: *[page_entries]pageTableEntry, vaddr: u32, paddr: u32, 
 // They are designed to be used when paging is first initialized.
 
 /// Maps a page in a page directory, assuming paging is not yet initialized.
-fn mapPageInit(directory: *[page_entries]pageDirectoryEntry, vaddr: u32, paddr: u32) pmm.PMMError!void {
+fn mapPageInit(directory: *[page_entries]pageDirectoryEntry, vaddr: u32, paddr: u32, vflags: virtual.Vflags) pmm.PMMError!void {
+    const flags: pageTableEntryFlags = translateVflags(vflags);
     const table: *[page_entries]pageTableEntry = try initTable(directory, vaddr, .{}, false);
-    fillTableEntry(table, vaddr, paddr, .{});
+    fillTableEntry(table, vaddr, paddr, flags);
 }
 
 /// Maps a region in a page directory, assuming paging is not yet initialized.
 fn mapRegionInit(directory: *[page_entries]pageDirectoryEntry, vr: *virtual.Vregion) pmm.PMMError!void {
     for (0..vr.pg_cnt) |i| {
-        try mapPageInit(directory, vr.vaddr + i * page_size, vr.paddr + i * page_size);
+        try mapPageInit(directory, vr.vaddr + i * page_size, vr.paddr + i * page_size, vr.flags);
     }
 }
 
@@ -111,12 +113,25 @@ pub fn registerRegion(vr: *virtual.Vregion) void {
 
 // The following functions modify paging structures while paging is already active.
 
+fn translateVflags(vflags: virtual.Vflags) pageTableEntryFlags {
+    const pat_idx: u3 = @intFromEnum(vflags.cache_mode);
+    return .{
+        .user = vflags.user,
+        .write = vflags.writeable,
+        .pat_0 = (pat_idx & 0x1) > 0,
+        .pat_1 = (pat_idx & 0x2) > 0,
+        .pat_2 = (pat_idx & 0x4) > 0,
+    };
+}
+
 /// Maps a single page with a given virtual and physical address, assuming paging is enabled.
-pub fn mapPage(vaddr: u32, paddr: u32, flags: pageTableEntryFlags) pmm.PMMError!void {
+pub fn mapPage(vaddr: u32, paddr: u32, vflags: virtual.Vflags) pmm.PMMError!void {
+    const flags: pageTableEntryFlags = translateVflags(vflags);
     const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(0xfffff000);
     _ = try initTable(directory, vaddr, .{}, true);
     const table: *[page_entries]pageTableEntry = @ptrFromInt(0xffc00000 + ((vaddr >> 10) & 0x3ff000));
     fillTableEntry(table, vaddr, paddr, flags);
+
 }
 
 /// Maps a region of memory, assuming paging is enabled.
@@ -135,7 +150,9 @@ pub fn getPageInfo(vaddr: usize) ?*pageTableEntry {
     return &table[(vaddr >> 12) & 0x3ff];
 }
 
+
 /// Module init: Sets up paging structures containing all regions registered with `registerRegion()` and enables paging. Supports loopback.
+
 fn init() modules.ModuleInitError!void {
     const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(pmm.pmmAlloc() catch return error.ModuleInitFailure);
     @memset(directory, .{
@@ -148,6 +165,15 @@ fn init() modules.ModuleInitError!void {
     }
     directory[directory.len - 1].flags.present = true;
     directory[directory.len - 1].addr_hi = @intCast(@intFromPtr(directory) >> 12);
+    const pat_msr: msr.MSR = 0x277;
+    // This value is set such that virtual.PageCacheMode becomes an index into the PAT:
+    // 0x00 = Uncacheable
+    // 0x01 = WriteCombining
+    // 0x04 = Writethrough
+    // 0x05 = WriteProtect
+    // 0x06 = Writeback
+    // 0x07 = Uncached
+    msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00);
     asm volatile (
         \\ mov %[directory], %%cr3
         \\ mov %%cr0, %%eax

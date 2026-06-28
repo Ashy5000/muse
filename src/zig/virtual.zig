@@ -4,24 +4,39 @@ const pmm = @import("alloc/pmm.zig");
 const frames = @import("alloc/frames.zig");
 const modules = @import("modules.zig");
 
+pub const PageCacheMode = enum {
+    Uncacheable,
+    WriteCombining,
+    Writethrough,
+    WriteProtect,
+    Writeback,
+    Uncached,
+};
+
+pub const Vflags = struct {
+    cache_mode: PageCacheMode = .Writeback,
+    user: bool = false,
+    writeable: bool = true,
+};
+
 pub const Vregion = struct {
     vaddr: usize,
     paddr: usize,
     pg_cnt: usize,
     next: ?*Vregion = null,
-    flags: paging.pageTableEntryFlags = .{},
+    flags: Vflags = .{},
 };
 
-pub fn backSlice(s: []u8) pmm.PMMError!void {
+pub fn backSlice(s: []u8, flags: Vflags) pmm.PMMError!void {
     const start: usize = @intFromPtr(s.ptr);
     var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
     while (addr < start + s.len) : (addr += paging.page_size) {
         const info: *paging.pageTableEntry = paging.getPageInfo(addr) orelse {
-            try paging.mapPage(addr, try pmm.pmmAlloc(), .{});
+            try paging.mapPage(addr, try pmm.pmmAlloc(), flags);
             continue;
         };
         if (!info.flags.present) {
-            try paging.mapPage(addr, try pmm.pmmAlloc(), .{});
+            try paging.mapPage(addr, try pmm.pmmAlloc(), flags);
         }
     }
 }

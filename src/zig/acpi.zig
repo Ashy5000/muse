@@ -48,6 +48,15 @@ const XSDT = extern struct {
 
 var sdt_ptrs: ?[]*ACPISDTHeader = null;
 
+fn verifySDT(ptr: *const ACPISDTHeader, len: usize) bool {
+    const data: []const u8 = @as([*]const u8, @ptrCast(ptr))[0..len];
+    var checksum: u8 = 0;
+    for (data) |b| {
+        checksum +%= b;
+    }
+    return checksum == 0;
+}
+
 fn backSDT(ptr: *ACPISDTHeader) modules.ModuleInitError!*ACPISDTHeader {
     const ptr_multi: [*]u8 = @as([*]u8, @ptrCast(ptr));
     const ptr_slice: []u8 = ptr_multi[0..@sizeOf(ACPISDTHeader)];
@@ -60,30 +69,51 @@ fn backSDT(ptr: *ACPISDTHeader) modules.ModuleInitError!*ACPISDTHeader {
 }
 
 fn init() modules.ModuleInitError!void {
-    const allocator = heap.allocator() catch return error.ModuleInitFailure;
-    const tag_new = multiboot.multibootFindTag(multiboot.MultibootTagAcpiNew) catch {
-        const tag_old = multiboot.multibootFindTag(multiboot.MultibootTagAcpiOld) catch return error.ModuleUnsupported;
-        const rsdp: RSDPv1 = tag_old.rsdp;
-        const rsdt: *RSDT = @ptrCast(try backSDT(@ptrFromInt(rsdp.rsdt_addr)));
-        const entry_count: usize = (rsdt.header.length - @sizeOf(ACPISDTHeader)) / @sizeOf(u32);
-        const entries: []const u32 = (@as([*]const u32, @ptrCast(&rsdt.first_sdt_ptr)))[0..entry_count];
+    rsdp: {
+        const allocator = heap.allocator() catch return error.ModuleInitFailure;
+        const tag_new = multiboot.multibootFindTag(multiboot.MultibootTagAcpiNew) catch {
+            const tag_old = multiboot.multibootFindTag(multiboot.MultibootTagAcpiOld) catch return error.ModuleUnsupported;
+            const rsdp: RSDPv1 = tag_old.rsdp;
+            if (!verifySDT(@ptrCast(&rsdp), @sizeOf(RSDPv1))) {
+                return error.ModuleInitFailure;
+            }
+            const rsdt: *RSDT = @ptrCast(try backSDT(@ptrFromInt(rsdp.rsdt_addr)));
+            if (!verifySDT(@ptrCast(rsdt), rsdt.header.length)) {
+                return error.ModuleInitFailure;
+            }
+            const entry_count: usize = (rsdt.header.length - @sizeOf(ACPISDTHeader)) / @sizeOf(u32);
+            const entries: []const u32 = (@as([*]const u32, @ptrCast(&rsdt.first_sdt_ptr)))[0..entry_count];
+            const ptrs: []*ACPISDTHeader = allocator.alloc(*ACPISDTHeader, entry_count) catch return error.ModuleInitFailure;
+            for (0..entry_count) |i| {
+                ptrs[i] = @ptrFromInt(entries[i]);
+            }
+            sdt_ptrs = ptrs;
+            break :rsdp;
+        };
+        const rsdp: RSDPv2 = tag_new.rsdp;
+        if (!verifySDT(@ptrCast(&rsdp), rsdp.len)) {
+            return error.ModuleInitFailure;
+        }
+        const xsdt: *XSDT = @ptrCast(try backSDT(@ptrFromInt(@as(usize, @intCast(rsdp.xsdt_addr)))));
+        if (!verifySDT(@ptrCast(xsdt), xsdt.header.length)) {
+            return error.ModuleInitFailure;
+        }
+        const entry_count: usize = (xsdt.header.length - @sizeOf(ACPISDTHeader)) / @sizeOf(u64);
+        const entries: []const u64 = (@as([*]const u64, @ptrCast(&xsdt.first_sdt_ptr)))[0..entry_count];
         const ptrs: []*ACPISDTHeader = allocator.alloc(*ACPISDTHeader, entry_count) catch return error.ModuleInitFailure;
         for (0..entry_count) |i| {
-            ptrs[i] = @ptrFromInt(entries[i]);
+            ptrs[i] = @ptrFromInt(@as(usize, @intCast(entries[i])));
         }
         sdt_ptrs = ptrs;
-        return;
-    };
-    const rsdp: RSDPv2 = tag_new.rsdp;
-    const xsdt: *XSDT = @ptrCast(try backSDT(@ptrFromInt(@as(usize, @intCast(rsdp.xsdt_addr)))));
-    const entry_count: usize = (xsdt.header.length - @sizeOf(ACPISDTHeader)) / @sizeOf(u64);
-    const entries: []const u64 = (@as([*]const u64, @ptrCast(&xsdt.first_sdt_ptr)))[0..entry_count];
-    const ptrs: []*ACPISDTHeader = allocator.alloc(*ACPISDTHeader, entry_count) catch return error.ModuleInitFailure;
-    for (0..entry_count) |i| {
-        console.print("SDT at 0x{x}.\n", .{entries[i]});
-        ptrs[i] = @ptrFromInt(@as(usize, @intCast(entries[i])));
     }
-    sdt_ptrs = ptrs;
+    const ptrs = sdt_ptrs.?;
+    for (0..ptrs.len) |i| {
+        ptrs[i] = try backSDT(ptrs[i]);
+        console.print("Found {s}.\n", .{ptrs[i].signature});
+        if (!verifySDT(ptrs[i], ptrs[i].length)) {
+            return error.ModuleInitFailure;
+        }
+    }
 }
 
 pub var mod: modules.Module = .{

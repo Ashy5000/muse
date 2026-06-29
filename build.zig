@@ -19,6 +19,14 @@ fn fatCpy(b: *std.Build, esp: std.Build.LazyPath, src: std.Build.LazyPath, compt
     return step;
 }
 
+const TargetSpecificInfo = struct {
+    bootstrap_asm: std.Build.LazyPath,
+    efi: []const u8,
+    grub_arch: []const u8,
+    vm: []const u8,
+    bios: []const u8,
+};
+
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const Target = std.Target.x86;
@@ -30,18 +38,31 @@ pub fn build(b: *std.Build) void {
         .cpu_features_sub = Target.featureSet(&.{ .avx, .avx2, .sse, .sse2, .mmx }),
     });
 
+    const info: TargetSpecificInfo = switch (target.result.cpu.arch) {
+        .x86 => .{
+            .bootstrap_asm = b.path("boot32.S"),
+            .efi = "artifacts/BOOTIA32.EFI",
+            .grub_arch = "i386-efi",
+            .vm = "qemu-system-i386",
+            .bios = "if=pflash,format=raw,readonly=on,file=deps/bios32.bin",
+        },
+        .x86_64 => .{
+            .bootstrap_asm = b.path("boot64.S"),
+            .efi = "artifacts/BOOTX64.EFI",
+            .grub_arch = "x86_64-efi",
+            .vm = "qemu-system-x86_64",
+            .bios = "if=pflash,format=raw,readonly=on,file=deps/bios64.bin",
+        },
+        else => unreachable,
+    };
+
     const mod = b.addModule("trampoline", .{
         .root_source_file = b.path("src/zig/trampoline.zig"),
         .target = target,
         .optimize = optimize,
         .code_model = .kernel,
     });
-
-    switch (target.result.cpu.arch) {
-        .x86_64 => mod.addAssemblyFile(b.path("boot64.S")),
-        .x86 => mod.addAssemblyFile(b.path("boot32.S")),
-        else => unreachable,
-    }
+    mod.addAssemblyFile(info.bootstrap_asm);
 
     const exe = b.addExecutable(.{
         .name = "muse_trampoline",
@@ -52,16 +73,16 @@ pub fn build(b: *std.Build) void {
     exe.use_lld = true;
 
     const wf = b.addWriteFiles();
-    const efi = wf.add("artifacts/BOOTIA32.EFI", &.{});
+    const efi = wf.add(info.efi, &.{});
 
     const grub_step = b.addSystemCommand(&.{"grub-mkimage"});
     grub_step.addArgs(&.{
         "-p",
         "/boot/grub",
         "-O",
-        "i386-efi",
-        "-o",
     });
+    grub_step.addArg(info.grub_arch);
+    grub_step.addArg("-o");
     grub_step.addFileArg(efi);
     grub_step.addArgs(&.{
         "fat",
@@ -152,14 +173,14 @@ pub fn build(b: *std.Build) void {
     const img_step = b.step("img", "Build a bootable disk image with muse");
     img_step.dependOn(&dd_step.step);
 
-    const qemu_step = b.addSystemCommand(&.{"qemu-system-i386"});
+    const qemu_step = b.addSystemCommand(&.{info.vm});
     qemu_step.addArgs(&.{
         "-drive",
     });
     qemu_step.addPrefixedFileArg("format=raw,file=", disk);
+    qemu_step.addArg("-drive");
+    qemu_step.addArg(info.bios);
     qemu_step.addArgs(&.{
-        "-drive",
-        "if=pflash,format=raw,readonly=on,file=deps/bios32.bin",
         "-d",
         "int",
         "-no-reboot",

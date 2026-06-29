@@ -7,10 +7,10 @@ pub const paging = switch (builtin.target.cpu.arch) {
 
 pub const idt = switch (builtin.target.cpu.arch) {
     .x86 => @import("arch/x86/idt.zig"),
-    else => @compileError("paging not supported for target"),
+    else => @compileError("IDT not supported for target"),
 };
 
 pub const dump = switch (builtin.target.cpu.arch) {
     .x86 => @import("arch/x86/dump.zig"),
-    else => @compileError("paging not supported for target"),
+    else => @compileError("Register dumps not supported for target"),
 };

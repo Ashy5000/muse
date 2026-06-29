@@ -11,22 +11,22 @@ multiboot_start:
 	.long HEADER_LEN
 	.long CHECKSUM
 	# Information request tag
-.align 8
-	.word 1
-	.word 1
-	.long 24
-	.long 6
-	.long 8
-	.long 14
-	.long 15
-.align 8
-	# Framebuffer tag
-	.word 5
-	.word 1
-	.long 20
-	.long 0
-	.long 0
-	.long 32
+ .align 8
+ 	.word 1
+ 	.word 1
+ 	.long 24
+ 	.long 6
+ 	.long 8
+ 	.long 14
+ 	.long 15
+ .align 8
+ 	# Framebuffer tag
+ 	.word 5
+ 	.word 1
+ 	.long 20
+ 	.long 0
+ 	.long 0
+ 	.long 32
 .align 8
 	# Terminating tag
 	.word 0

@@ -2,6 +2,7 @@ const std = @import("std");
 const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");
 const paging = @import("../arch.zig").paging;
+const global = @import("../global.zig");
 const elf = @import("../elf.zig");
 
 const min_chunk_size_log = 4;
@@ -153,8 +154,8 @@ pub fn allocator() AllocCreateError!std.mem.Allocator {
 fn init() modules.ModuleInitError!void {
     const region = elf.trampoline_region.?;
     global_heap = .{
-        .limit = @ptrFromInt(region.vaddr + region.pg_cnt * paging.page_size),
-        .max_limit = @ptrFromInt(1 << (@bitSizeOf(usize) - 1)),
+        .limit = @ptrCast(@as([*]allowzero u8, @ptrCast(global.info)) + global.info.size),
+        .max_limit = @ptrFromInt(region.vaddr),
         .size = 0,
         .free = 0,
         .tiers = @splat(null),

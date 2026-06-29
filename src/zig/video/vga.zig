@@ -10,13 +10,11 @@ const Framebuffer = struct {
     pitch: usize,
 };
 
-var fb_region: ?virtual.Vregion = null;
-
 var framebuffer: ?Framebuffer = null;
 
 fn init() bool {
     const vga_tag = multiboot.multibootFindTag(multiboot.MultibootTagFramebuffer) catch return false;
-    const fb: Framebuffer = .{
+    var fb: Framebuffer = .{
         .bfr = @ptrFromInt(@as(usize, @intCast(vga_tag.addr))),
         .width = vga_tag.width,
         .height = vga_tag.height,
@@ -24,16 +22,8 @@ fn init() bool {
     };
     display_vga.width = fb.width;
     display_vga.height = fb.height;
+    fb.bfr = (virtual.mapPhysObj(fb.bfr[0 .. fb.pitch * fb.height]) catch return false).ptr;
     framebuffer = fb;
-    fb_region = .{
-        .vaddr = @intFromPtr(fb.bfr),
-        .paddr = @intFromPtr(fb.bfr),
-        .pg_cnt = (fb.pitch * fb.height + paging.page_size - 1) / paging.page_size,
-        .flags = .{
-            .cache_mode = .WriteCombining,
-        },
-    };
-    paging.registerRegion(&fb_region.?);
     fillRect(0, 0, fb.width, fb.height, 0x000000) catch return false;
     return true;
 }

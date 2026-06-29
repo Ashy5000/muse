@@ -66,5 +66,7 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "elf",
     .init = init,
-    .deps = &@as([2]*modules.Module, .{ &multiboot.mod, &console.mod }),
+    .deps = &.{
+        &multiboot.mod,
+    },
 };

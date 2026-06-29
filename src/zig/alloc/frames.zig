@@ -3,7 +3,6 @@
 const std = @import("std");
 const paging = @import("../arch.zig").paging;
 const bitmaps = @import("../utils/bitmaps.zig");
-const global = @import("../global.zig");
 const heap = @import("heap.zig");
 const elf = @import("../elf.zig");
 const console = @import("../console.zig");
@@ -42,11 +41,13 @@ pub fn frameFree(start: *align(paging.page_size) u8) void {
 }
 
 fn init() modules.ModuleInitError!void {
-    const start: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(global.info) + global.info.size);
-    const end: usize = elf.trampoline_region.?.vaddr;
+    const trampoline_region = elf.trampoline_region.?;
+    const start: usize = std.mem.Alignment.forward(paging.page_align, trampoline_region.vaddr + trampoline_region.pg_cnt * paging.page_size);
+    const end: usize = start + paging.page_size * 4096;
     const bitmap_cnt: usize = ((end - start) / paging.page_size) / 8;
     const allocator = heap.allocator() catch return error.ModuleInitFailure;
     const bitmap: []bitmaps.BitmapUnit = allocator.alloc(bitmaps.BitmapUnit, bitmap_cnt) catch return error.ModuleInitFailure;
+    @memset(bitmap, 0);
     frame_alloc_global = .{
         .start = @ptrFromInt(start),
         .bitmap = bitmap,
@@ -56,5 +57,5 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "frames",
     .init = init,
-    .deps = &@as([4]*modules.Module, .{ &paging.mod, &global.mod, &heap.mod, &elf.mod }),
+    .deps = &.{ &paging.mod, &heap.mod, &elf.mod },
 };

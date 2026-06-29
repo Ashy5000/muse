@@ -70,5 +70,5 @@ pub fn unmapPhysObj(s: []u8) void {
 
 pub var mod: modules.Module = .{
     .name = "virtual",
-    .deps = &@as([2]*modules.Module, .{ &pmm.mod, &paging.mod }),
+    .deps = &.{ &pmm.mod, &paging.mod, &frames.mod },
 };

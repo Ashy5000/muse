@@ -51,8 +51,3 @@ pub fn loadModule(m: *Module) ModuleInitError!void {
         console.print("/\n", .{});
     }
 }
-
-pub var mod: Module = .{
-    .name = "modules",
-    .deps = @as([1]*Module, .{&console.mod})[0..],
-};

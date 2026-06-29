@@ -31,5 +31,5 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "display",
     .init = init,
-    .deps = &@as([1]*modules.Module, .{&@import("multiboot.zig").mod}),
+    .deps = &.{ &@import("multiboot.zig").mod, &@import("virtual.zig").mod },
 };

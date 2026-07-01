@@ -6,6 +6,7 @@ fn gpf(_: *anyopaque, _: usize) callconv(idt.int_callconv) void {
     std.debug.panic("#GP", .{});
 }
 
+/// A descriptor for an GPF handler ISR.
 pub var isr_info: interrupts.ISRInfo = .{
     .irq = 0xD,
     .isr = gpf,

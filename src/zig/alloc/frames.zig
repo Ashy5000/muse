@@ -20,13 +20,16 @@ pub const FrameAllocError = error{
 
 var frame_alloc_global: ?FrameAllocInfo = null;
 
-/// Allocates a page-sized chunk of virtual memory, which may or may not be mapped to a physical page.
+/// Allocates a page-sized chunk of virtual memory, which may or may not be
+/// mapped to a physical page.
 pub fn frameAlloc() FrameAllocError![*]align(paging.page_size) u8 {
     const info: FrameAllocInfo = frame_alloc_global orelse return error.FrameAllocUninit;
     const idx: usize = bitmaps.bitmapAlloc(info.bitmap) orelse return error.FrameAllocNoMem;
     return info.start + (idx * paging.page_size);
 }
 
+/// Allocates `cnt` contiguous page-sized chunks of virtual memory, which
+/// may or may not be mapped to physical pages.
 pub fn frameAllocContig(cnt: usize) FrameAllocError![*]align(paging.page_size) u8 {
     const info: FrameAllocInfo = frame_alloc_global orelse return error.FrameAllocUninit;
     const idx: usize = bitmaps.bitmapAllocContig(info.bitmap, cnt) orelse return error.FrameAllocNoMem;
@@ -54,6 +57,8 @@ fn init() modules.ModuleInitError!void {
     };
 }
 
+/// The frames module, which initializes an allocator for allocating virtual
+/// page-sized chunks of memory.
 pub var mod: modules.Module = .{
     .name = "frames",
     .init = init,

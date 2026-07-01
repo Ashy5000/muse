@@ -30,6 +30,7 @@ fn pageFault(_: *anyopaque, code_int: usize) callconv(idt.int_callconv) void {
     , .{ code_int, write, present, addr });
 }
 
+/// A descriptor for a page fault handler ISR.
 pub var isr_info: interrupts.ISRInfo = .{
     .irq = 0xE,
     .isr = pageFault,

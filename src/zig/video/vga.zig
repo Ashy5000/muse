@@ -22,6 +22,7 @@ fn init() bool {
     };
     display_vga.width = fb.width;
     display_vga.height = fb.height;
+    //todo
     fb.bfr = (virtual.mapPhysObj(fb.bfr[0 .. fb.pitch * fb.height]) catch return false).ptr;
     framebuffer = fb;
     fillRect(0, 0, fb.width, fb.height, 0x000000) catch return false;

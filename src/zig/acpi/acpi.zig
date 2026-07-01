@@ -1,9 +1,13 @@
-const multiboot = @import("multiboot.zig");
-const virtual = @import("virtual.zig");
-const heap = @import("alloc/heap.zig");
-const console = @import("console.zig");
-const modules = @import("modules.zig");
+const std = @import("std");
+const multiboot = @import("../multiboot.zig");
+const virtual = @import("../virtual.zig");
+const heap = @import("../alloc/heap.zig");
+const console = @import("../console.zig");
+const sdt = @import("sdt.zig");
+const fadt = @import("fadt.zig");
+const modules = @import("../modules.zig");
 
+/// Version 1 of the RSDP.
 pub const RSDPv1 = extern struct {
     signature: [8]u8,
     checksum: u8,
@@ -12,43 +16,41 @@ pub const RSDPv1 = extern struct {
     rsdt_addr: u32,
 };
 
+/// Version 2 of the RSDP. The first 5 fields are identical, but there are four
+/// additional fields following them. rsdt_addr still exists but is deprecated
+/// in favor of xsdt_addr.
 pub const RSDPv2 = extern struct {
     signature: [8]u8,
     checksum: u8,
     oem_id: [6]u8,
     rev: u8,
     rsdt_addr: u32,
+
     len: u32,
     xsdt_addr: u64,
     checksum_ext: u8,
     rsvd: [3]u8,
 };
 
-const ACPISDTHeader = extern struct {
-    signature: [4]u8,
-    length: u32,
-    rev: u8,
-    checksum: u8,
-    oem_id: [6]u8,
-    oem_table_id: [8]u8,
-    oem_rev: u32,
-    creator_id: u32,
-    creator_rev: u32,
-};
-
+/// The RSDT, a table pointed to by the RSDPv1 that contains pointers to each
+/// other SDT.
 const RSDT = extern struct {
-    header: ACPISDTHeader,
+    header: sdt.DefBlockHeader,
     first_sdt_ptr: u32,
 };
 
+/// The XSDT, a table pointed to by the RSDPv2 that contains pointers to each
+/// other SDT.
 const XSDT = extern struct {
-    header: ACPISDTHeader,
+    header: sdt.DefBlockHeader,
     first_sdt_ptr: u64,
 };
 
-var sdt_ptrs: ?[]*ACPISDTHeader = null;
+var sdt_ptrs: ?[]*sdt.DefBlockHeader = null;
 
-fn verifySDT(ptr: *const ACPISDTHeader, len: usize) bool {
+/// Verifies a SDT given a pointer to its header and its length. Returns true
+/// upon success, and false upon an invalid table.
+fn verifySDT(ptr: *const sdt.DefBlockHeader, len: usize) bool {
     const data: []const u8 = @as([*]const u8, @ptrCast(ptr))[0..len];
     var checksum: u8 = 0;
     for (data) |b| {
@@ -57,17 +59,7 @@ fn verifySDT(ptr: *const ACPISDTHeader, len: usize) bool {
     return checksum == 0;
 }
 
-fn backSDT(ptr: *ACPISDTHeader) modules.ModuleInitError!*ACPISDTHeader {
-    const ptr_multi: [*]u8 = @as([*]u8, @ptrCast(ptr));
-    const ptr_slice: []u8 = ptr_multi[0..@sizeOf(ACPISDTHeader)];
-    const header_slice: []u8 = virtual.mapPhysObj(ptr_slice) catch return error.ModuleInitFailure;
-    const header: *ACPISDTHeader = @alignCast(@ptrCast(header_slice.ptr));
-    const sdt_slice: []u8 = virtual.mapPhysObj(ptr_multi[0..header.length]) catch return error.ModuleInitFailure;
-    virtual.unmapPhysObj(header_slice);
-    const sdt: *ACPISDTHeader = @alignCast(@ptrCast(sdt_slice.ptr));
-    return sdt;
-}
-
+/// Initializes ACPI.
 fn init() modules.ModuleInitError!void {
     rsdp: {
         const allocator = heap.allocator() catch return error.ModuleInitFailure;
@@ -77,13 +69,13 @@ fn init() modules.ModuleInitError!void {
             if (!verifySDT(@ptrCast(&rsdp), @sizeOf(RSDPv1))) {
                 return error.ModuleInitFailure;
             }
-            const rsdt: *RSDT = @ptrCast(try backSDT(@ptrFromInt(rsdp.rsdt_addr)));
+            const rsdt: *RSDT = @ptrCast(sdt.backSDT(@ptrFromInt(rsdp.rsdt_addr)) catch return error.ModuleInitFailure);
             if (!verifySDT(@ptrCast(rsdt), rsdt.header.length)) {
                 return error.ModuleInitFailure;
             }
-            const entry_count: usize = (rsdt.header.length - @sizeOf(ACPISDTHeader)) / @sizeOf(u32);
+            const entry_count: usize = (rsdt.header.length - @sizeOf(sdt.DefBlockHeader)) / @sizeOf(u32);
             const entries: []const u32 = (@as([*]const u32, @ptrCast(&rsdt.first_sdt_ptr)))[0..entry_count];
-            const ptrs: []*ACPISDTHeader = allocator.alloc(*ACPISDTHeader, entry_count) catch return error.ModuleInitFailure;
+            const ptrs: []*sdt.DefBlockHeader = allocator.alloc(*sdt.DefBlockHeader, entry_count) catch return error.ModuleInitFailure;
             for (0..entry_count) |i| {
                 ptrs[i] = @ptrFromInt(entries[i]);
             }
@@ -94,13 +86,13 @@ fn init() modules.ModuleInitError!void {
         if (!verifySDT(@ptrCast(&rsdp), rsdp.len)) {
             return error.ModuleInitFailure;
         }
-        const xsdt: *XSDT = @ptrCast(try backSDT(@ptrFromInt(@as(usize, @intCast(rsdp.xsdt_addr)))));
+        const xsdt: *XSDT = @ptrCast(sdt.backSDT(@ptrFromInt(@as(usize, @intCast(rsdp.xsdt_addr)))) catch return error.ModuleInitFailure);
         if (!verifySDT(@ptrCast(xsdt), xsdt.header.length)) {
             return error.ModuleInitFailure;
         }
-        const entry_count: usize = (xsdt.header.length - @sizeOf(ACPISDTHeader)) / @sizeOf(u64);
+        const entry_count: usize = (xsdt.header.length - @sizeOf(sdt.DefBlockHeader)) / @sizeOf(u64);
         const entries: []const u64 = (@as([*]const u64, @ptrCast(&xsdt.first_sdt_ptr)))[0..entry_count];
-        const ptrs: []*ACPISDTHeader = allocator.alloc(*ACPISDTHeader, entry_count) catch return error.ModuleInitFailure;
+        const ptrs: []*sdt.DefBlockHeader = allocator.alloc(*sdt.DefBlockHeader, entry_count) catch return error.ModuleInitFailure;
         for (0..entry_count) |i| {
             ptrs[i] = @ptrFromInt(@as(usize, @intCast(entries[i])));
         }
@@ -108,16 +100,20 @@ fn init() modules.ModuleInitError!void {
     }
     const ptrs = sdt_ptrs.?;
     for (0..ptrs.len) |i| {
-        ptrs[i] = try backSDT(ptrs[i]);
+        ptrs[i] = sdt.backSDT(ptrs[i]) catch return error.ModuleInitFailure;
         console.print("Found {s}.\n", .{ptrs[i].signature});
         if (!verifySDT(ptrs[i], ptrs[i].length)) {
             return error.ModuleInitFailure;
         }
+        if (std.mem.eql(u8, &ptrs[i].signature, "FACP")) {
+            fadt.initFADT(ptrs[i]) catch return error.ModuleInitFailure;
+        }
     }
 }
 
+/// The ACPI module, which maps and parses ACPI tables during the boot sequence.
 pub var mod: modules.Module = .{
     .name = "acpi",
     .init = init,
-    .deps = &@as([4]*modules.Module, .{ &multiboot.mod, &virtual.mod, &heap.mod, &@import("alloc/frames.zig").mod }),
+    .deps = &.{ &multiboot.mod, &virtual.mod, &heap.mod, &@import("../alloc/frames.zig").mod },
 };

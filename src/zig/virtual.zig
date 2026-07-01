@@ -41,7 +41,7 @@ pub fn backSlice(s: []u8, flags: Vflags) pmm.PMMError!void {
     }
 }
 
-const MapError = pmm.PMMError || frames.FrameAllocError;
+pub const MapError = pmm.PMMError || frames.FrameAllocError;
 
 pub fn mapPhysObj(s: []u8) MapError![]u8 {
     const phys_start: usize = std.mem.Alignment.backward(paging.page_align, @intFromPtr(s.ptr));

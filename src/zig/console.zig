@@ -1,6 +1,7 @@
 const std = @import("std");
 const psf = @import("psf.zig");
 const display = @import("display.zig");
+const io = @import("utils/io.zig");
 const modules = @import("modules.zig");
 
 const Console = struct {
@@ -23,8 +24,9 @@ fn maybeScroll(cons: *Console) ConsolePrintError!void {
     try cons.d.scrollGrid(psf.font.?.glyph_height);
 }
 
-pub fn printChar(char: u8) ConsolePrintError!void {
+fn printChar(char: u8) ConsolePrintError!void {
     var cons = &(console orelse return error.ConsoleUninit);
+    io.out8(0xe9, char);
     if (char == '\n') {
         cons.x = 0;
         cons.y += 1;
@@ -71,6 +73,7 @@ fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Write
     return consumed;
 }
 
+/// Creates a std.Io.Writer attached to the system console.
 pub fn writer(buf: []u8) std.Io.Writer {
     return .{
         .buffer = buf,
@@ -83,10 +86,12 @@ pub fn writer(buf: []u8) std.Io.Writer {
 
 var console_writer = writer(&.{});
 
+/// Formats and prints a string to the system console.
 pub fn print(comptime fmt: []const u8, args: anytype) void {
     console_writer.print(fmt, args) catch return;
 }
 
+/// Generates a hexadecimal dump of a data slice.
 pub fn hexdump(data: []const u8) void {
     var offset: usize = 0;
     while (offset < data.len) : (offset += 16) {
@@ -106,8 +111,9 @@ fn init() modules.ModuleInitError!void {
     };
 }
 
+/// The console module, which initializes the system console.
 pub var mod: modules.Module = .{
     .name = "console",
-    .deps = &@as([2]*modules.Module, .{ &psf.mod, &display.mod }),
+    .deps = &.{ &psf.mod, &display.mod },
     .init = init,
 };

@@ -6,11 +6,14 @@ const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");
 const bitmaps = @import("../utils/bitmaps.zig");
 
+/// An error which occurred while allocating or setting the status of physical
+/// pages.
 pub const PMMError = error{
     PMMNoMem,
     PMMUninit,
 };
 
+/// Allocates a page of physical memory and returns its physical address.
 pub fn pmmAlloc() PMMError!usize {
     for (0..global.info.region_cnt) |i| {
         const idx: usize = bitmaps.bitmapAlloc(global.info.regions[i].bitmap orelse return error.PMMUninit) orelse continue;
@@ -19,6 +22,10 @@ pub fn pmmAlloc() PMMError!usize {
     return error.PMMNoMem;
 }
 
+/// If `status` is true, sets the status of the physical page at physical
+/// address `addr` as in use. Otherwise, frees the physical page at the
+/// address. If the status of the page is equal to the requested status,
+/// no error is returned. This means that double-frees do not produce an error.
 pub fn pmmSetStatus(addr: usize, status: bool) PMMError!void {
     for (0..global.info.region_cnt) |i| {
         const start: usize = global.info.regions[i].start;
@@ -62,6 +69,7 @@ fn init() modules.ModuleInitError!void {
     }
 }
 
+/// The pmm module, which initializes a physical memory page frame allocator.
 pub var mod: modules.Module = .{
     .name = "pmm",
     .init = init,

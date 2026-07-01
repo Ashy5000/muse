@@ -2,12 +2,16 @@ const std = @import("std");
 const vga = @import("video/vga.zig");
 const modules = @import("modules.zig");
 
+/// A type capable of representing a color.
 pub const Color = u24;
 
 const displays: [1]*Display = .{&vga.display_vga};
 
+/// An error produced while drawing to a display.
 pub const DisplayDrawError = vga.VGADrawError;
 
+/// A display output that supports initialization, pixel plotting, and
+/// scrolling.
 pub const Display = struct {
     width: usize,
     height: usize,
@@ -16,6 +20,7 @@ pub const Display = struct {
     scrollGrid: *const fn (inc: usize) DisplayDrawError!void,
 };
 
+/// The primary system display, used for the system console.
 pub var display_primary: ?*Display = null;
 
 fn init() modules.ModuleInitError!void {
@@ -28,6 +33,7 @@ fn init() modules.ModuleInitError!void {
     return error.ModuleInitFailure;
 }
 
+/// The display module, which initializes the subsystem for video output.
 pub var mod: modules.Module = .{
     .name = "display",
     .init = init,

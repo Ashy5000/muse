@@ -181,10 +181,10 @@ pub fn build(b: *std.Build) void {
     qemu_step.addArg("-drive");
     qemu_step.addArg(info.bios);
     qemu_step.addArgs(&.{
-        "-d",
-        "int",
         "-no-reboot",
         "-no-shutdown",
+        "-debugcon",
+        "stdio",
     });
     qemu_step.step.dependOn(img_step);
 

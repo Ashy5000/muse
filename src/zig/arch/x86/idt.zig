@@ -33,8 +33,10 @@ var idt: [256]IDTEntry = @splat(null_entry);
 
 export var idtr: IDTR = .{ .size_dec = @sizeOf(@TypeOf(idt)) - 1, .base = 0 };
 
+/// The calling convention for x86 interrupts.
 pub const int_callconv = std.lang.CallingConvention{ .x86_interrupt = .{} };
 
+/// Loads an Interrupt Service Routine corresponding with the given IRQ.
 pub fn loadISR(irq: usize, isr: *const fn (*anyopaque, usize) callconv(int_callconv) void) void {
     idt[irq].present = true;
     idt[irq].isr_lo = @truncate(@intFromPtr(isr));
@@ -46,6 +48,8 @@ fn init() modules.ModuleInitError!void {
     asm volatile ("lidt [idtr]");
 }
 
+/// The idt module, which initializes and loads an Interrupt Descriptor Table
+/// for an x86 system.
 pub var mod: modules.Module = .{
     .name = "idt",
     .init = init,

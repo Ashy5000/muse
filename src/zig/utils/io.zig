@@ -1,5 +1,17 @@
 pub const Port = u16;
 
+pub fn out8(comptime port: Port, data: u8) void {
+    asm volatile (
+        \\ mov %[data], %%al
+        \\ mov %[port], %%dx
+        \\ outb %%al, (%%dx)
+        :
+        : [data] "r" (data),
+          [port] "r" (port),
+        : .{ .al = true, .dx = true }
+    );
+}
+
 pub fn out32(comptime port: Port, data: u32) void {
     asm volatile (
         \\ mov %[data], %%eax

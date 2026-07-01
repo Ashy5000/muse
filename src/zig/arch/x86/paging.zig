@@ -184,6 +184,8 @@ fn init() modules.ModuleInitError!void {
     );
 }
 
+/// The paging module, which initializes paging structures and enables paging
+/// on an x86 system.
 pub var mod: modules.Module = .{
     .name = "paging",
     .init = init,

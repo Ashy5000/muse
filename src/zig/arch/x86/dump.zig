@@ -1,5 +1,6 @@
 const console = @import("../../console.zig");
 
+/// Creates and prints a register dump for an x86 system.
 pub fn dumpRegs() void {
     var eax: u32 = undefined;
     var ebx: u32 = undefined;

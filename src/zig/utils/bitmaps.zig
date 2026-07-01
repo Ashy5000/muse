@@ -36,7 +36,7 @@ pub fn bitmapAllocContig(bitmap: []BitmapUnit, cnt: usize) ?usize {
     }
     if (contig == cnt) {
         for (offset..offset + contig) |i| {
-            bitmap[i / 8] |= @as(BitmapUnit, 1) << @as(u3, @intCast(i % 8));
+            bitmap[i / 8] |= @as(BitmapUnit, 1) << @as(u3, @intCast(i % @bitSizeOf(BitmapUnit)));
         }
         return offset;
     }
@@ -44,7 +44,7 @@ pub fn bitmapAllocContig(bitmap: []BitmapUnit, cnt: usize) ?usize {
 }
 
 pub fn bitmapSet(bitmap: []BitmapUnit, idx: usize, status: bool) void {
-    const mask: BitmapUnit = @as(BitmapUnit, 1) << @as(u3, @intCast(idx));
+    const mask: BitmapUnit = @as(BitmapUnit, 1) << @as(u3, @intCast(idx % @bitSizeOf(BitmapUnit)));
     if (status) {
         bitmap[idx / @bitSizeOf(BitmapUnit)] |= mask;
     } else {

@@ -140,10 +140,13 @@ const vtable: std.mem.Allocator.VTable = .{
 
 var global_heap: ?Heap = null;
 
+/// An error that occured while creating an std.mem.Allocator.
 pub const AllocCreateError = error{
     AllocUninit,
 };
 
+/// Creates and returns an std.mem.Allocator instance that allocates memory
+/// on the kernel's heap.
 pub fn allocator() AllocCreateError!std.mem.Allocator {
     return .{
         .ptr = &(global_heap orelse return error.AllocUninit),
@@ -164,6 +167,7 @@ fn init() modules.ModuleInitError!void {
     prev_size.* = 0;
 }
 
+/// The heap module, which initializes a heap for the kernel.
 pub var mod: modules.Module = .{
     .name = "heap",
     .init = init,

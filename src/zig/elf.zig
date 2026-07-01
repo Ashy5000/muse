@@ -5,6 +5,7 @@ const modules = @import("modules.zig");
 const console = @import("console.zig");
 const paging = @import("arch/x86/paging.zig");
 
+/// The type of an ELF section.
 pub const ELFSectionType = enum(u32) {
     null,
     progbits,
@@ -24,6 +25,7 @@ pub const ELFSectionType = enum(u32) {
     hiuser,
 };
 
+/// A header for an ELF section.
 pub const ELFSectionHeader = extern struct {
     name: u32,
     section_type: ELFSectionType,
@@ -39,6 +41,7 @@ pub const ELFSectionHeader = extern struct {
 
 const elf_section_flag_alloc: u32 = 0x2;
 
+/// The region of memory in which the prekernel is loaded.
 pub var trampoline_region: ?virtual.Vregion = null;
 
 fn init() modules.ModuleInitError!void {
@@ -63,6 +66,7 @@ fn init() modules.ModuleInitError!void {
     paging.registerRegion(&trampoline_region.?);
 }
 
+/// The elf module, which parses information about the prekernel ELF file.
 pub var mod: modules.Module = .{
     .name = "elf",
     .init = init,

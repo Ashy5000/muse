@@ -2,7 +2,7 @@ const std = @import("std");
 const paging = @import("arch.zig").paging;
 const elf = @import("elf.zig");
 const virtual = @import("virtual.zig");
-const acpi = @import("acpi.zig");
+const acpi = @import("acpi/acpi.zig");
 const modules = @import("modules.zig");
 
 pub const TagType = enum(u32) {

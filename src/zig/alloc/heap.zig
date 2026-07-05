@@ -3,9 +3,10 @@ const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");
 const paging = @import("../arch.zig").paging;
 const global = @import("../global.zig");
+const console = @import("../console.zig");
 const elf = @import("../elf.zig");
 
-const min_chunk_size_log = 4;
+const min_chunk_size_log: usize = 4;
 const min_chunk_size: usize = (1 << min_chunk_size_log);
 const tier_cnt: usize = @bitSizeOf(usize) - min_chunk_size_log;
 const chunk_overhead: usize = (2 * @sizeOf(usize));
@@ -37,6 +38,7 @@ fn heapSbrk(heap: *Heap, inc: usize) ?[*]u8 {
 }
 
 fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: usize) ?[*]u8 {
+    console.print("global.info.size: {x}.\n", .{global.info.size});
     const heap: *Heap = @alignCast(@ptrCast(heap_opaque));
     const size: usize = @max(len + chunk_overhead, min_chunk_size);
     const t_idx: usize = @bitSizeOf(usize) - 1 - @clz(size) - min_chunk_size_log;
@@ -157,7 +159,7 @@ pub fn allocator() AllocCreateError!std.mem.Allocator {
 fn init() modules.ModuleInitError!void {
     const region = elf.trampoline_region.?;
     global_heap = .{
-        .limit = @ptrCast(@as([*]allowzero u8, @ptrCast(global.info)) + global.info.size),
+        .limit = @ptrFromInt(@intFromPtr(global.info) + global.info.size + 1),
         .max_limit = @ptrFromInt(region.vaddr),
         .size = 0,
         .free = 0,

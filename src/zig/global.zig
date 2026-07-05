@@ -5,7 +5,7 @@ const bitmaps = @import("utils/bitmaps.zig");
 pub const Region = struct {
     start: usize,
     pg_cnt: usize,
-    bitmap: ?[]bitmaps.BitmapUnit,
+    bitmaps: ?[pmm.tier_cnt][]bitmaps.BitmapUnit,
 };
 
 pub const CoreInfo = struct {

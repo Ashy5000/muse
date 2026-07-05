@@ -5,7 +5,8 @@ const modules = @import("modules.zig");
 const console = @import("console.zig");
 const panic_mod = @import("panic.zig");
 const interrupts = @import("interrupts.zig");
-const acpi = @import("acpi/acpi.zig");
+const pmm = @import("alloc/pmm.zig");
+const pci = @import("pci.zig");
 
 pub const panic = std.debug.FullPanic(panic_mod.crashed);
 
@@ -14,7 +15,7 @@ export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_ma
 
     modules.loadModule(&console.mod) catch asm volatile ("hlt");
     modules.loadModule(&interrupts.mod) catch asm volatile ("hlt");
-    modules.loadModule(&acpi.mod) catch asm volatile ("hlt");
+    modules.loadModule(&pci.mod) catch asm volatile ("hlt");
     console.print("Initialization complete.\n", .{});
 
     while (true) {

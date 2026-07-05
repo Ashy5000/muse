@@ -32,11 +32,11 @@ pub fn backSlice(s: []u8, flags: Vflags) pmm.PMMError!void {
     var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
     while (addr < start + s.len) : (addr += paging.page_size) {
         const info: *paging.pageTableEntry = paging.getPageInfo(addr) orelse {
-            try paging.mapPage(addr, try pmm.pmmAlloc(), flags);
+            try paging.mapPage(addr, try pmm.pmmAlloc(paging.page_size), flags);
             continue;
         };
         if (!info.flags.present) {
-            try paging.mapPage(addr, try pmm.pmmAlloc(), flags);
+            try paging.mapPage(addr, try pmm.pmmAlloc(paging.page_size), flags);
         }
     }
 }

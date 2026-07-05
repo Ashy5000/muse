@@ -61,7 +61,7 @@ fn initTable(directory: *[page_entries]pageDirectoryEntry, vaddr: u32, flags: pa
     if (directory[idx].flags.present) {
         return @ptrFromInt(directory[idx].addr_hi << 12);
     }
-    const table_addr: u32 = @intCast(try pmm.pmmAlloc());
+    const table_addr: u32 = @intCast(try pmm.pmmAlloc(page_size));
     var table: *[page_entries]pageTableEntry = undefined;
     directory[idx].flags = flags;
     directory[idx].addr_hi = @intCast(table_addr >> 12);
@@ -154,7 +154,7 @@ pub fn getPageInfo(vaddr: usize) ?*pageTableEntry {
 /// Module init: Sets up paging structures containing all regions registered with `registerRegion()` and enables paging. Supports loopback.
 
 fn init() modules.ModuleInitError!void {
-    const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(pmm.pmmAlloc() catch return error.ModuleInitFailure);
+    const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(pmm.pmmAlloc(page_size) catch return error.ModuleInitFailure);
     @memset(directory, .{
         .flags = .{ .present = false },
     });

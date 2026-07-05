@@ -23,6 +23,7 @@ const TargetSpecificInfo = struct {
     bootstrap_asm: std.Build.LazyPath,
     efi: []const u8,
     grub_arch: []const u8,
+    grub_path: []const u8,
     vm: []const u8,
     bios: []const u8,
 };
@@ -43,6 +44,7 @@ pub fn build(b: *std.Build) void {
             .bootstrap_asm = b.path("boot32.S"),
             .efi = "artifacts/BOOTIA32.EFI",
             .grub_arch = "i386-efi",
+            .grub_path = "/lib/grub/i386-efi",
             .vm = "qemu-system-i386",
             .bios = "if=pflash,format=raw,readonly=on,file=deps/bios32.bin",
         },
@@ -50,6 +52,7 @@ pub fn build(b: *std.Build) void {
             .bootstrap_asm = b.path("boot64.S"),
             .efi = "artifacts/BOOTX64.EFI",
             .grub_arch = "x86_64-efi",
+            .grub_path = "/home/ashy5000/etc/grub-build/grub-core",
             .vm = "qemu-system-x86_64",
             .bios = "if=pflash,format=raw,readonly=on,file=deps/bios64.bin",
         },
@@ -75,23 +78,16 @@ pub fn build(b: *std.Build) void {
     const wf = b.addWriteFiles();
     const efi = wf.add(info.efi, &.{});
 
-    const grub_step = b.addSystemCommand(&.{"grub-mkimage"});
+    const grub_step = b.addSystemCommand(&.{"grub-mkstandalone"});
     grub_step.addArgs(&.{
-        "-p",
-        "/boot/grub",
+        "-d",
+        info.grub_path,
         "-O",
     });
     grub_step.addArg(info.grub_arch);
     grub_step.addArg("-o");
     grub_step.addFileArg(efi);
-    grub_step.addArgs(&.{
-        "fat",
-        "part_gpt",
-        "ext2",
-        "multiboot2",
-        "configfile",
-        "all_video",
-    });
+    grub_step.addArg("boot/grub/grub.cfg=grub/grub_mem.cfg");
 
     const esp = wf.add("artifacts/esp.img", &.{});
 
@@ -122,7 +118,7 @@ pub fn build(b: *std.Build) void {
     mcopy_step_0.step.dependOn(&mmd_step_1.step);
     mcopy_step_0.step.dependOn(&grub_step.step);
 
-    const mcopy_step_1 = fatCpy(b, esp, b.path("grub.cfg"), "/boot/grub");
+    const mcopy_step_1 = fatCpy(b, esp, b.path("grub/grub_disk.cfg"), "/boot/grub");
     mcopy_step_1.step.dependOn(&mmd_step_3.step);
 
     const mcopy_step_2 = fatCpy(b, esp, exe.getEmittedBin(), "/boot/muse");
@@ -186,6 +182,15 @@ pub fn build(b: *std.Build) void {
         "-debugcon",
         "stdio",
     });
+
+    const debug = b.option(bool, "debug", "Make QEMU wait for a GDB connection") orelse false;
+    if (debug) {
+        qemu_step.addArgs(&.{
+            "-s",
+            "-S",
+        });
+    }
+
     qemu_step.step.dependOn(img_step);
 
     const run_step = b.step("run", "Run muse in QEMU");

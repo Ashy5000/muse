@@ -15,7 +15,7 @@ pub fn init() modules.ModuleInitError!void {
         global.info.regions[idx] = .{
             .start = @intCast(entry.addr),
             .pg_cnt = @intCast(entry.len / paging.page_size),
-            .bitmap = null,
+            .bitmaps = null,
         };
         entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);
         idx += 1;

@@ -1,6 +1,6 @@
 const multiboot = @import("multiboot.zig");
 const global = @import("global.zig");
-const paging = @import("arch/x86/paging.zig");
+const paging = @import("arch.zig").paging;
 const modules = @import("modules.zig");
 
 pub fn init() modules.ModuleInitError!void {

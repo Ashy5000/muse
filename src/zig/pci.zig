@@ -149,7 +149,7 @@ const PCIDev = struct {
         if ((bar_int & 0x1) == 0) {
             // Mem
             const bar_mem: BARMem = @bitCast(bar_int);
-            const res: BAR = .{ .mem = .{
+            var res: BAR = .{ .mem = .{
                 .bar_mem_type = bar_mem.bar_mem_type,
                 .prefetchable = bar_mem.prefetchable,
                 .addr = @as(usize, bar_mem.addr_hi) << 4,

@@ -4,12 +4,14 @@ const modules = @import("../../modules.zig");
 const IDTEntry = packed struct {
     isr_lo: u16,
     segment: u16,
-    rsvd0: u8 = 0,
+    ist: u3,
+    rsvd0: u5,
     gate_type: u4,
-    rsvd1: u1 = 0,
+    rsvd1: u1,
     dpl: u2,
     present: bool,
-    isr_hi: u16,
+    isr_hi: u48,
+    rsvd2: u32,
 };
 
 const kernel_cs: u16 = 0x8;
@@ -23,20 +25,18 @@ const null_entry: IDTEntry = .{
     .isr_hi = 0,
 };
 
-const IDTR = packed struct(u64) {
+const IDTR = packed struct(u128) {
     size_dec: u16,
-    base: u32,
-    paddding: u16 = 0,
+    base: u64,
+    padding: u48,
 };
 
 var idt: [256]IDTEntry = @splat(null_entry);
 
 export var idtr: IDTR = .{ .size_dec = @sizeOf(@TypeOf(idt)) - 1, .base = 0 };
 
-/// The calling convention for x86 interrupts.
-pub const int_callconv = std.lang.CallingConvention{ .x86_interrupt = .{} };
+pub const int_callconv = std.lang.CallingConvention{ .x86_64_interrupt = .{} };
 
-/// Loads an Interrupt Service Routine corresponding with the given IRQ.
 pub fn loadISR(irq: usize, isr: *const fn (*anyopaque, usize) callconv(int_callconv) void) void {
     idt[irq].present = true;
     idt[irq].isr_lo = @truncate(@intFromPtr(isr));
@@ -49,7 +49,7 @@ fn init() modules.ModuleInitError!void {
 }
 
 /// The idt module, which initializes and loads an Interrupt Descriptor Table
-/// for an x86 system.
+/// for an x86_64 system.
 pub var mod: modules.Module = .{
     .name = "idt",
     .init = init,

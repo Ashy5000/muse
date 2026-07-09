@@ -1,5 +1,7 @@
 //! Handles muse's paging system when building for x86. Some of the functions contained in this file are only used when paging is first initialized, and others are used throughout the lifetime of the OS.
 
+// TODO: Refactor some stuff, fix struct capitalization
+
 const std = @import("std");
 const pmm = @import("../../alloc/pmm.zig");
 const virtual = @import("../../virtual.zig");
@@ -129,9 +131,12 @@ pub fn mapPage(vaddr: u32, paddr: u32, vflags: virtual.Vflags) pmm.PMMError!void
     const flags: pageTableEntryFlags = translateVflags(vflags);
     const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(0xfffff000);
     _ = try initTable(directory, vaddr, .{}, true);
+    asm volatile ("invlpg (%[vaddr])"
+        :: [vaddr] "r" (vaddr),
+        : .{ .memory = true, }
+    );
     const table: *[page_entries]pageTableEntry = @ptrFromInt(0xffc00000 + ((vaddr >> 10) & 0x3ff000));
     fillTableEntry(table, vaddr, paddr, flags);
-
 }
 
 /// Maps a region of memory, assuming paging is enabled.

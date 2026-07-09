@@ -82,7 +82,7 @@ pub const MultibootTagELFSections = extern struct {
     num: u32,
     entsize: u32,
     shndx: u32,
-    first_section: elf.ELFSectionHeader,
+    first_section: elf.ELFSectionHeader align(1),
 };
 
 pub const MultibootTagAcpiOld = extern struct {

@@ -78,7 +78,7 @@ pub fn build(b: *std.Build) void {
     const wf = b.addWriteFiles();
     const efi = wf.add(info.efi, &.{});
 
-    const grub_step = b.addSystemCommand(&.{"grub-mkstandalone"});
+    const grub_step = b.addSystemCommand(&.{"/home/ashy5000/etc/grub-build/grub-mkstandalone"});
     grub_step.addArgs(&.{
         "-d",
         info.grub_path,
@@ -179,8 +179,10 @@ pub fn build(b: *std.Build) void {
     qemu_step.addArgs(&.{
         "-no-reboot",
         "-no-shutdown",
-        "-debugcon",
-        "stdio",
+        // "-debugcon",
+        // "stdio",
+        "-d",
+        "int",
     });
 
     const debug = b.option(bool, "debug", "Make QEMU wait for a GDB connection") orelse false;

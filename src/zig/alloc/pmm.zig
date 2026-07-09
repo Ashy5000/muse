@@ -1,6 +1,6 @@
 const std = @import("std");
 const global = @import("../global.zig");
-const paging = @import("../arch/x86/paging.zig");
+const paging = @import("../arch.zig").paging;
 const mmap = @import("../mmap.zig");
 const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");

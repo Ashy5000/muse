@@ -3,7 +3,7 @@ const virtual = @import("virtual.zig");
 const multiboot = @import("multiboot.zig");
 const modules = @import("modules.zig");
 const console = @import("console.zig");
-const paging = @import("arch/x86/paging.zig");
+const paging = @import("arch.zig").paging;
 
 /// The type of an ELF section.
 pub const ELFSectionType = enum(u32) {
@@ -29,14 +29,14 @@ pub const ELFSectionType = enum(u32) {
 pub const ELFSectionHeader = extern struct {
     name: u32,
     section_type: ELFSectionType,
-    flags: u32,
-    vaddr: u32,
-    foffset: u32,
-    size: u32,
+    flags: usize,
+    vaddr: usize,
+    foffset: usize,
+    size: usize,
     link: u32,
     info: u32,
-    addralign: u32,
-    entsize: u32,
+    addralign: usize,
+    entsize: usize,
 };
 
 const elf_section_flag_alloc: u32 = 0x2;
@@ -46,10 +46,11 @@ pub var trampoline_region: ?virtual.Vregion = null;
 
 fn init() modules.ModuleInitError!void {
     const elf_tag = multiboot.multibootFindTag(multiboot.MultibootTagELFSections) catch return error.ModuleUnsupported;
-    const section_headers: []ELFSectionHeader = (@as([*]ELFSectionHeader, @ptrCast(&elf_tag.first_section)))[0..elf_tag.num];
     var start: ?usize = null;
     var end: ?usize = null;
-    for (section_headers) |h| {
+    var offset: usize = 0;
+    while (offset < elf_tag.num * elf_tag.entsize) : (offset += elf_tag.entsize) {
+        const h: *align(1) ELFSectionHeader = @ptrFromInt(@intFromPtr(&elf_tag.first_section) + offset);
         if ((h.section_type == .null) or (h.flags & elf_section_flag_alloc == 0)) {
             continue;
         }

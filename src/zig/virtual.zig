@@ -28,16 +28,13 @@ pub const Vregion = struct {
 };
 
 pub fn backSlice(s: []u8, flags: Vflags) pmm.PMMError!void {
-    const start: usize = std.mem.Alignment.backward(paging.page_align, @intFromPtr(s.ptr));
-    const end: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(s.ptr) + s.len);
-    const paddr: usize = try pmm.pmmAlloc(end - start);
-    const vr: Vregion = .{
-        .vaddr = start,
-        .paddr = paddr,
-        .pg_cnt = (end - start) / paging.page_size,
-        .flags = flags,
-    };
-    try paging.mapRegion(&vr);
+    const start: usize = @intFromPtr(s.ptr);
+    var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
+    while (addr < start + s.len) : (addr += paging.page_size) {
+        if (!paging.getPageStatus(addr)) {
+            try paging.mapPage(addr, try pmm.pmmAlloc(paging.page_size), .@"4k", flags);
+        }
+    }
 }
 
 pub const MapError = pmm.PMMError || frames.FrameAllocError;

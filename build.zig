@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const Target = std.Target.x86;
     const target = b.resolveTargetQuery(.{
-        .cpu_arch = .x86,
+        .cpu_arch = .x86_64,
         .os_tag = .freestanding,
         .abi = .none,
         .cpu_features_add = Target.featureSet(&.{.soft_float}),
@@ -63,7 +63,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/zig/trampoline.zig"),
         .target = target,
         .optimize = optimize,
-        .code_model = .kernel,
+        // .code_model = .kernel,
     });
     mod.addAssemblyFile(info.bootstrap_asm);
 

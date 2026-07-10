@@ -146,15 +146,14 @@ pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
     }
 }
 
-pub fn getPageInfo(vaddr: usize) ?*pageTableEntry {
+pub fn getPageStatus(vaddr: usize) bool {
     const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(0xfffff000);
     if (!directory[vaddr >> 22].flags.present) {
-        return null;
+        return false;
     }
     const table: *[page_entries]pageTableEntry = @ptrFromInt(0xffc00000 + ((vaddr >> 10) & 0x3ff000));
-    return &table[(vaddr >> 12) & 0x3ff];
+    return table[(vaddr >> 12) & 0x3ff].flags.present;
 }
-
 
 /// Module init: Sets up paging structures containing all regions registered with `registerRegion()` and enables paging. Supports loopback.
 

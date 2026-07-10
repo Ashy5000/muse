@@ -3,10 +3,9 @@ const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");
 const paging = @import("../arch.zig").paging;
 const global = @import("../global.zig");
-const console = @import("../console.zig");
 const elf = @import("../elf.zig");
 
-const min_chunk_size_log: usize = 4;
+const min_chunk_size_log: usize = 5;
 const min_chunk_size: usize = (1 << min_chunk_size_log);
 const tier_cnt: usize = @bitSizeOf(usize) - min_chunk_size_log;
 const chunk_overhead: usize = (2 * @sizeOf(usize));
@@ -38,7 +37,6 @@ fn heapSbrk(heap: *Heap, inc: usize) ?[*]u8 {
 }
 
 fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: usize) ?[*]u8 {
-    console.print("global.info.size: {x}.\n", .{global.info.size});
     const heap: *Heap = @alignCast(@ptrCast(heap_opaque));
     const size: usize = @max(len + chunk_overhead, min_chunk_size);
     const t_idx: usize = @bitSizeOf(usize) - 1 - @clz(size) - min_chunk_size_log;
@@ -90,7 +88,7 @@ fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: u
     const limit_old = heapSbrk(heap, end + @sizeOf(usize) - @intFromPtr(heap.limit)) orelse return null;
 
     if (prev_size.* > 0) {
-        const p_ch: *align(1) Chunk = @ptrFromInt(@intFromPtr(limit_old) - @sizeOf(usize) - prev_size.*);
+        const p_ch: *align(1) Chunk = @ptrFromInt(@intFromPtr(limit_old) - @sizeOf(usize) - n_ch.prev_size);
         p_ch.size += @intFromPtr(n_ch) - (@intFromPtr(limit_old) - @sizeOf(usize));
     }
     const prev_size_next: *align(1) usize = @ptrFromInt(@intFromPtr(heap.limit) - @sizeOf(usize));

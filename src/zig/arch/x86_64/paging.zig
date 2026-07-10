@@ -148,10 +148,13 @@ fn mapRegionInit(pml4: *[page_entries]PageEntry, vr: *virtual.Vregion) pmm.PMMEr
     var paddr: usize = vr.paddr;
     var remaining: usize = vr.pg_cnt * page_size;
     var inc: usize = 0;
-    while (remaining > 0) {
+    while (true) {
         vaddr += inc;
         paddr += inc;
         remaining -= inc;
+        if (remaining == 0) {
+            break;
+        }
         const addr_union: Vaddr = .{ .addr = vaddr };
         if (remaining >= @intFromEnum(PageSize.@"2m") and (paddr % @intFromEnum(PageSize.@"2m")) == 0 and (vaddr % @intFromEnum(PageSize.@"2m")) == 0) {
             try mapPageInit(pml4, addr_union, paddr, PageSize.@"2m", vflags);

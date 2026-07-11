@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const Target = std.Target.x86;
     const target = b.resolveTargetQuery(.{
-        .cpu_arch = .x86_64,
+        .cpu_arch = b.option(std.Target.Cpu.Arch, "arch", "CPU architecture to compile the kernel for") orelse .x86_64,
         .os_tag = .freestanding,
         .abi = .none,
         .cpu_features_add = Target.featureSet(&.{.soft_float}),

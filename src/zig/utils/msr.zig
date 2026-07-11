@@ -1,12 +1,25 @@
+const modules = @import("../modules.zig");
+const cpuid = @import("../cpuid.zig");
+
 pub const MSR = u32;
 
 pub fn setMSR(msr: MSR, data: u64) void {
     asm volatile (
-        \\ mov %[msr], %%ecx
         \\ wrmsr
         :
-        : [msr] "r" (msr),
+        : [msr] "{ecx}" (msr),
           [data] "A" (data),
-        : .{ .ecx = true, }
     );
 }
+
+fn init() modules.ModuleInitError!void {
+    if (!cpuid.cpu_features.?.msr) {
+        return error.ModuleUnsupported;
+    }
+}
+
+pub var mod: modules.Module = .{
+    .name = "msr",
+    .init = init,
+    .deps = &.{&cpuid.mod},
+};

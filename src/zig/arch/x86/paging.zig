@@ -116,7 +116,7 @@ pub fn registerRegion(vr: *virtual.Vregion) void {
 // The following functions modify paging structures while paging is already active.
 
 fn translateVflags(vflags: virtual.Vflags) pageTableEntryFlags {
-    const pat_idx: u3 = @intFromEnum(vflags.cache_mode);
+    const pat_idx: u3 = if (msr.mod.inited) @intFromEnum(vflags.cache_mode) else 0;
     return .{
         .user = vflags.user,
         .write = vflags.writeable,
@@ -126,8 +126,14 @@ fn translateVflags(vflags: virtual.Vflags) pageTableEntryFlags {
     };
 }
 
+/// Specifies the size of a page. Protected-mode paging only supports 4k pages,
+/// but we need this for compatibility with other architectures.
+const PageSize = enum(usize) {
+    @"4k" = 4 * 1024,
+};
+
 /// Maps a single page with a given virtual and physical address, assuming paging is enabled.
-pub fn mapPage(vaddr: u32, paddr: u32, vflags: virtual.Vflags) pmm.PMMError!void {
+pub fn mapPage(vaddr: u32, paddr: u32, _: PageSize, vflags: virtual.Vflags) pmm.PMMError!void {
     const flags: pageTableEntryFlags = translateVflags(vflags);
     const directory: *[page_entries]pageDirectoryEntry = @ptrFromInt(0xfffff000);
     _ = try initTable(directory, vaddr, .{}, true);
@@ -142,7 +148,7 @@ pub fn mapPage(vaddr: u32, paddr: u32, vflags: virtual.Vflags) pmm.PMMError!void
 /// Maps a region of memory, assuming paging is enabled.
 pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
     for (0..vr.pg_cnt) |i| {
-        try mapPage(vr.vaddr + i * page_size, vr.paddr + i * page_size, vr.flags);
+        try mapPage(vr.vaddr + i * page_size, vr.paddr + i * page_size, .@"4k", vr.flags);
     }
 }
 
@@ -177,14 +183,16 @@ fn init() modules.ModuleInitError!void {
     // 0x05 = WriteProtect
     // 0x06 = Writeback
     // 0x07 = Uncached
-    msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00);
+    if (msr.mod.inited) {
+        msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00);
+    }
     asm volatile (
         \\ mov %[directory], %%cr3
         \\ mov %%cr0, %%eax
         \\ or $0x80000001, %%eax
         \\ mov %%eax, %%cr0
         :: [directory] "r" (directory),
-        : .{ .eax = true }
+        : .{ .eax = true, .memory = true }
     );
 }
 
@@ -193,5 +201,6 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "paging",
     .init = init,
-    .deps = &@as([2]*modules.Module, .{ &pmm.mod, &elf.mod }),
+    .deps = &.{ &pmm.mod, &elf.mod },
+    .deps_opt = &.{ &msr.mod },
 };

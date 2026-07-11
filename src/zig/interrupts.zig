@@ -15,6 +15,7 @@ fn init() modules.ModuleInitError!void {
     for (isrs) |isr| {
         idt.loadISR(isr.irq, isr.isr);
     }
+    asm volatile ("sti");
 }
 
 pub var mod: modules.Module = .{

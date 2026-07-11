@@ -4,6 +4,7 @@ const virtual = @import("../../virtual.zig");
 const pmm = @import("../../alloc/pmm.zig");
 const msr = @import("../../utils/msr.zig");
 const elf = @import("../../elf.zig");
+const cpuid = @import("../../cpuid.zig");
 const modules = @import("../../modules.zig");
 
 const maxInt = std.math.maxInt;
@@ -82,7 +83,7 @@ fn resolveTable(parent: *[page_entries]PageEntry, idx: u9, clear_addr: ?*[page_e
 
 fn applyPATIndex(entry: *PageEntry, vflags: virtual.Vflags, size: PageSize) void {
     var res = entry;
-    const pat_idx: u3 = @intFromEnum(vflags.cache_mode);
+    const pat_idx: u3 = if (msr.mod.inited) @intFromEnum(vflags.cache_mode) else 0;
     res.fields.pat_1 = (pat_idx & 0x2) > 0;
     res.fields.pat_2 = (pat_idx & 0x4) > 0;
     switch (size) {
@@ -174,6 +175,10 @@ pub fn mapPage(
     size: PageSize,
     vflags: virtual.Vflags,
 ) pmm.PMMError!void {
+    // asm volatile ("invlpg (%[addr])"
+    //     :: [addr] "r" (addr),
+    //     : .{ .memory = true, }
+    // );
     const vaddr: Vaddr = .{ .addr = addr };
     const pml4: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
@@ -239,6 +244,11 @@ pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
         vaddr += inc;
         paddr += inc;
         remaining -= inc;
+        if (cpuid.cpu_extended_info.?.pdpe1gb and remaining >= @intFromEnum(PageSize.@"1g") and (paddr % @intFromEnum(PageSize.@"1g")) == 0 and (vaddr % @intFromEnum(PageSize.@"1g")) == 0) {
+            try mapPage(vaddr, paddr, PageSize.@"1g", vflags);
+            inc = @intFromEnum(PageSize.@"1g");
+            continue;
+        }
         if (remaining >= @intFromEnum(PageSize.@"2m") and (paddr % @intFromEnum(PageSize.@"2m")) == 0 and (vaddr % @intFromEnum(PageSize.@"2m")) == 0) {
             try mapPage(vaddr, paddr, PageSize.@"2m", vflags);
             inc = @intFromEnum(PageSize.@"2m");
@@ -333,7 +343,9 @@ fn init() modules.ModuleInitError!void {
     // 0x05 = WriteProtect
     // 0x06 = Writeback
     // 0x07 = Uncached
-    msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00);
+    if (msr.mod.inited) {
+        msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00);
+    }
     asm volatile ("mov %[pml2], %%cr3"
         :: [pml2] "r" (pml2),
         : .{ .memory = true }
@@ -345,5 +357,6 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "paging",
     .init = init,
-    .deps = &@as([2]*modules.Module, .{ &pmm.mod, &elf.mod }),
+    .deps = &.{ &pmm.mod, &elf.mod },
+    .deps_opt = &.{ &msr.mod },
 };

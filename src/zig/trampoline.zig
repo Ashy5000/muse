@@ -6,6 +6,7 @@ const console = @import("console.zig");
 const panic_mod = @import("panic.zig");
 const interrupts = @import("interrupts.zig");
 const pci = @import("pci.zig");
+const cpuid = @import("cpuid.zig");
 
 pub const panic = std.debug.FullPanic(panic_mod.crashed);
 

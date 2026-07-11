@@ -13,13 +13,18 @@ pub const Module = struct {
     name: []const u8,
     inited: bool = false,
     visited: bool = false,
+    err: ?ModuleInitError = null,
     deps: []const *Module = @as([0]*Module, .{})[0..],
+    deps_opt: []const *Module = @as([0]*Module, .{})[0..],
     init: *const fn () ModuleInitError!void = initEmpty,
 };
 
 var depth: u32 = 0;
 
 pub fn loadModule(m: *Module) ModuleInitError!void {
+    if (m.err) |err| {
+        return err;
+    }
     if (m.inited) {
         return;
     }
@@ -36,11 +41,17 @@ pub fn loadModule(m: *Module) ModuleInitError!void {
         try loadModule(module);
         depth -= 1;
     }
+    for (m.deps_opt) |module| {
+        depth += 1;
+        loadModule(module) catch {};
+        depth -= 1;
+    }
     m.init() catch |err| {
         for (0..depth) |_| {
             console.print(" |", .{});
         }
         console.print("ERROR: {s}\n", .{@errorName(err)});
+        m.err = err;
         return err;
     };
     m.inited = true;

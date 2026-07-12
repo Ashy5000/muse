@@ -1,3 +1,4 @@
+const std = @import("std");
 const sdt = @import("sdt.zig");
 const aml = @import("aml.zig");
 
@@ -66,11 +67,11 @@ pub const GenericAddressStructure = extern struct {
 
 const FADTError = sdt.SDTBackError || aml.AMLParseError;
 
-pub fn initFADT(start: *sdt.DefBlockHeader) FADTError!void {
-    const fadt: *FADT = @ptrCast(start);
+pub fn initFADT(start: *sdt.DefBlockHeader, allocator: std.mem.Allocator) FADTError!void {
+    const fadt: *FADT = @alignCast(@ptrCast(start));
     const dsdt: *sdt.DefBlockHeader = if (fadt.header.rev == 2)
         try sdt.backSDT(@ptrFromInt(@as(usize, @intCast(fadt.dsdt))))
     else
         try sdt.backSDT(@ptrFromInt(fadt.dsdt));
-    try aml.parseAML(@as([*]u8, @ptrCast(dsdt))[0..dsdt.length]);
+    try aml.parseAML(@as([*]u8, @ptrCast(dsdt))[0..dsdt.length], allocator);
 }

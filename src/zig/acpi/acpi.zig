@@ -5,6 +5,7 @@ const heap = @import("../alloc/heap.zig");
 const console = @import("../console.zig");
 const sdt = @import("sdt.zig");
 const fadt = @import("fadt.zig");
+const scoping = @import("scoping.zig");
 const modules = @import("../modules.zig");
 
 /// Version 1 of the RSDP.
@@ -43,7 +44,7 @@ const RSDT = extern struct {
 /// other SDT.
 const XSDT = extern struct {
     header: sdt.DefBlockHeader,
-    first_sdt_ptr: u64,
+    first_sdt_ptr: u64 align(4),
 };
 
 var sdt_ptrs: ?[]*sdt.DefBlockHeader = null;
@@ -61,8 +62,8 @@ fn verifySDT(ptr: *const sdt.DefBlockHeader, len: usize) bool {
 
 /// Initializes ACPI.
 fn init() modules.ModuleInitError!void {
+    const allocator = heap.allocator() catch return error.ModuleInitFailure;
     rsdp: {
-        const allocator = heap.allocator() catch return error.ModuleInitFailure;
         const tag_new = multiboot.multibootFindTag(multiboot.MultibootTagAcpiNew) catch {
             const tag_old = multiboot.multibootFindTag(multiboot.MultibootTagAcpiOld) catch return error.ModuleUnsupported;
             const rsdp: RSDPv1 = tag_old.rsdp;
@@ -86,18 +87,19 @@ fn init() modules.ModuleInitError!void {
         if (!verifySDT(@ptrCast(&rsdp), rsdp.len)) {
             return error.ModuleInitFailure;
         }
-        const xsdt: *XSDT = @ptrCast(sdt.backSDT(@ptrFromInt(@as(usize, @intCast(rsdp.xsdt_addr)))) catch return error.ModuleInitFailure);
+        const xsdt: *XSDT = @alignCast(@ptrCast(sdt.backSDT(@ptrFromInt(@as(usize, @intCast(rsdp.xsdt_addr)))) catch return error.ModuleInitFailure));
         if (!verifySDT(@ptrCast(xsdt), xsdt.header.length)) {
             return error.ModuleInitFailure;
         }
         const entry_count: usize = (xsdt.header.length - @sizeOf(sdt.DefBlockHeader)) / @sizeOf(u64);
-        const entries: []const u64 = (@as([*]const u64, @ptrCast(&xsdt.first_sdt_ptr)))[0..entry_count];
+        const entries: []align(4) const u64 = (@as([*]align(4) const u64, @ptrCast(&xsdt.first_sdt_ptr)))[0..entry_count];
         const ptrs: []*sdt.DefBlockHeader = allocator.alloc(*sdt.DefBlockHeader, entry_count) catch return error.ModuleInitFailure;
         for (0..entry_count) |i| {
             ptrs[i] = @ptrFromInt(@as(usize, @intCast(entries[i])));
         }
         sdt_ptrs = ptrs;
     }
+    scoping.init(allocator) catch return error.ModuleInitFailure;
     const ptrs = sdt_ptrs.?;
     for (0..ptrs.len) |i| {
         ptrs[i] = sdt.backSDT(ptrs[i]) catch return error.ModuleInitFailure;
@@ -106,7 +108,7 @@ fn init() modules.ModuleInitError!void {
             return error.ModuleInitFailure;
         }
         if (std.mem.eql(u8, &ptrs[i].signature, "FACP")) {
-            fadt.initFADT(ptrs[i]) catch return error.ModuleInitFailure;
+            fadt.initFADT(ptrs[i], allocator) catch return error.ModuleInitFailure;
         }
     }
 }

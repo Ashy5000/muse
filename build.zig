@@ -179,10 +179,10 @@ pub fn build(b: *std.Build) void {
     qemu_step.addArgs(&.{
         "-no-reboot",
         "-no-shutdown",
-        "-debugcon",
-        "stdio",
-        // "-d",
-        // "int",
+        // "-debugcon",
+        // "stdio",
+        "-d",
+        "int",
     });
 
     const debug = b.option(bool, "debug", "Make QEMU wait for a GDB connection") orelse false;

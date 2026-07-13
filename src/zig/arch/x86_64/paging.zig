@@ -25,7 +25,8 @@ const PageEntryStruct = packed struct {
     dirty: bool = false,
     size: bool, // In page tables, this bit is used to represent pat_0.
     global: bool = false,
-    avl_0: u3 = 0,
+    unresolved: bool = false,
+    avl_0: u2 = 0,
     addr_hi: u40, // In the page directory pointer table and page directories, the lowest
     // bit of addr_hi is used for pat_0.
     avl_1: u11 = 0,
@@ -175,10 +176,10 @@ pub fn mapPage(
     size: PageSize,
     vflags: virtual.Vflags,
 ) pmm.PMMError!void {
-    // asm volatile ("invlpg (%[addr])"
-    //     :: [addr] "r" (addr),
-    //     : .{ .memory = true, }
-    // );
+    asm volatile ("invlpg (%[addr])"
+        :: [addr] "r" (addr),
+        : .{ .memory = true, }
+    );
     const vaddr: Vaddr = .{ .addr = addr };
     const pml4: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{

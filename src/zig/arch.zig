@@ -20,3 +20,8 @@ pub const dump = switch (builtin.target.cpu.arch) {
     .x86_64 => @import("arch/x86_64/dump.zig"),
     else => @compileError("Register dumps not supported for target"),
 };
+
+pub const contextSwitch = switch (builtin.target.cpu.arch) {
+    .x86_64 => @import("arch/x86_64/contextSwitch.zig"),
+    else => @compileError("Context switching not supported for target"),
+};

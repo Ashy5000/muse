@@ -27,19 +27,19 @@ pub const Vregion = struct {
     flags: Vflags = .{},
 };
 
-pub fn backSlice(s: []u8, flags: Vflags) pmm.PMMError!void {
+pub fn backSlice(s: []u8) pmm.PMMError!void {
     const start: usize = @intFromPtr(s.ptr);
     var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
     while (addr < start + s.len) : (addr += paging.page_size) {
         if (!paging.getPageStatus(addr)) {
-            try paging.mapPage(addr, try pmm.pmmAlloc(paging.page_size), .@"4k", flags);
+            try paging.mapPage(addr, try pmm.pmmAlloc(paging.page_size), .@"4k", .{});
         }
     }
 }
 
 pub const MapError = pmm.PMMError || frames.FrameAllocError;
 
-pub fn mapPhysObj(s: []u8) MapError![]u8 {
+pub fn mapPhysObj(s: []u8, flags: Vflags) MapError![]u8 {
     const phys_start: usize = std.mem.Alignment.backward(paging.page_align, @intFromPtr(s.ptr));
     const phys_end: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(s.ptr) + s.len);
     const pg_cnt: usize = (phys_end - phys_start) / paging.page_size;
@@ -48,6 +48,7 @@ pub fn mapPhysObj(s: []u8) MapError![]u8 {
         .vaddr = virt_start,
         .paddr = phys_start,
         .pg_cnt = pg_cnt,
+        .flags = flags,
     };
     try paging.mapRegion(&region);
     const offset = @intFromPtr(s.ptr) - phys_start;

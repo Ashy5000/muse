@@ -1,8 +1,8 @@
 const std = @import("std");
-const io = @import("utils/io.zig");
-const console = @import("console.zig");
-const heap = @import("alloc/heap.zig");
-const modules = @import("modules.zig");
+const io = @import("../utils/io.zig");
+const console = @import("../console.zig");
+const heap = @import("../alloc/heap.zig");
+const modules = @import("../modules.zig");
 
 const pci_config_addr: io.Port = 0xcf8;
 const pci_config_data: io.Port = 0xcfc;

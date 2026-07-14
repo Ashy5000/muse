@@ -124,7 +124,7 @@ pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
     const struct_info = @typeInfo(res_type).@"struct";
     const field_type = struct_info.field_types[0];
     if (field_type != TagType) {
-        @compileError("invalid multiboot tag struct: first field should be a TagType.");
+        @compileError("invalid multiboot tag struct: first field should be a TagType");
     }
     const tag_type = struct_info.field_attrs[0].defaultValue(field_type);
     const info = multiboot_info orelse return error.MultibootNoInfo;

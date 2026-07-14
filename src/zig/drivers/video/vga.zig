@@ -1,10 +1,10 @@
-const multiboot = @import("../multiboot.zig");
-const display = @import("../display.zig");
-const virtual = @import("../virtual.zig");
-const paging = @import("../arch/x86/paging.zig");
+const multiboot = @import("../../multiboot.zig");
+const display = @import("../../display.zig");
+const virtual = @import("../../virtual.zig");
+const paging = @import("../../arch/x86/paging.zig");
 
 const Framebuffer = struct {
-    bfr: [*]u8,
+    bfr: [*]volatile u8,
     width: usize,
     height: usize,
     pitch: usize,
@@ -15,15 +15,15 @@ var framebuffer: ?Framebuffer = null;
 fn init() bool {
     const vga_tag = multiboot.multibootFindTag(multiboot.MultibootTagFramebuffer) catch return false;
     var fb: Framebuffer = .{
-        .bfr = @ptrFromInt(@as(usize, @intCast(vga_tag.addr))),
+        .bfr = undefined,
         .width = vga_tag.width,
         .height = vga_tag.height,
         .pitch = vga_tag.pitch,
     };
     display_vga.width = fb.width;
     display_vga.height = fb.height;
-    //todo
-    fb.bfr = (virtual.mapPhysObj(fb.bfr[0 .. fb.pitch * fb.height]) catch return false).ptr;
+    const bfr_phys: [*]u8 = @ptrFromInt(@as(usize, @intCast(vga_tag.addr)));
+    fb.bfr = (virtual.mapPhysObj(bfr_phys[0 .. fb.pitch * fb.height], .{ .cache_mode = .WriteCombining }) catch return false).ptr;
     framebuffer = fb;
     fillRect(0, 0, fb.width, fb.height, 0x000000) catch return false;
     return true;

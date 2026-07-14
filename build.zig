@@ -183,6 +183,8 @@ pub fn build(b: *std.Build) void {
         // "stdio",
         "-d",
         "int",
+        "-smp",
+        "2",
     });
 
     const debug = b.option(bool, "debug", "Make QEMU wait for a GDB connection") orelse false;

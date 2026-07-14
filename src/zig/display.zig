@@ -1,5 +1,5 @@
 const std = @import("std");
-const vga = @import("video/vga.zig");
+const vga = @import("drivers/video/vga.zig");
 const modules = @import("modules.zig");
 
 /// A type capable of representing a color.

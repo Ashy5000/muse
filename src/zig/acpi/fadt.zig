@@ -67,11 +67,11 @@ pub const GenericAddressStructure = extern struct {
 
 const FADTError = sdt.SDTBackError || aml.AMLParseError;
 
-pub fn initFADT(start: *sdt.DefBlockHeader, allocator: std.mem.Allocator) FADTError!void {
+pub fn initFADT(start: *sdt.DefBlockHeader, _: std.mem.Allocator) FADTError!void {
     const fadt: *FADT = @alignCast(@ptrCast(start));
-    const dsdt: *sdt.DefBlockHeader = if (fadt.header.rev == 2)
+    _ = if (fadt.header.rev == 2)
         try sdt.backSDT(@ptrFromInt(@as(usize, @intCast(fadt.dsdt))))
     else
         try sdt.backSDT(@ptrFromInt(fadt.dsdt));
-    try aml.parseAML(@as([*]u8, @ptrCast(dsdt))[0..dsdt.length], allocator);
+    // try aml.parseAML(@as([*]u8, @ptrCast(dsdt))[0..dsdt.length], allocator);
 }

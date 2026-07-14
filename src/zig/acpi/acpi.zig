@@ -60,6 +60,18 @@ fn verifySDT(ptr: *const sdt.DefBlockHeader, len: usize) bool {
     return checksum == 0;
 }
 
+pub const ACPIError = error{ ACPIUninit, TableNotPresent };
+
+pub fn findSDT(sig: *const [4]u8) ACPIError!*sdt.DefBlockHeader {
+    const ptrs = sdt_ptrs orelse return error.ACPIUninit;
+    for (ptrs) |ptr| {
+        if (std.mem.eql(u8, ptr.signature[0..4], sig)) {
+            return ptr;
+        }
+    }
+    return error.TableNotPresent;
+}
+
 /// Initializes ACPI.
 fn init() modules.ModuleInitError!void {
     const allocator = heap.allocator() catch return error.ModuleInitFailure;

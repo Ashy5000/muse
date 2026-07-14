@@ -241,10 +241,13 @@ pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
     var paddr: usize = vr.paddr;
     var remaining: usize = vr.pg_cnt * page_size;
     var inc: usize = 0;
-    while (remaining > 0) {
+    while (true) {
         vaddr += inc;
         paddr += inc;
         remaining -= inc;
+        if (remaining == 0) {
+            break;
+        }
         if (cpuid.cpu_extended_info.?.pdpe1gb and remaining >= @intFromEnum(PageSize.@"1g") and (paddr % @intFromEnum(PageSize.@"1g")) == 0 and (vaddr % @intFromEnum(PageSize.@"1g")) == 0) {
             try mapPage(vaddr, paddr, PageSize.@"1g", vflags);
             inc = @intFromEnum(PageSize.@"1g");

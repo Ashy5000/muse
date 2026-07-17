@@ -1,5 +1,5 @@
-const modules = @import("modules.zig");
-const io = @import("utils/io.zig");
+const modules = @import("../modules.zig");
+const io = @import("../utils/io.zig");
 
 fn init() modules.ModuleInitError!void {
     const pic1: io.Port = 0x20;

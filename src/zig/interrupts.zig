@@ -2,7 +2,7 @@ const idt = @import("arch.zig").idt;
 const modules = @import("modules.zig");
 
 pub const ISRInfo = struct {
-    irq: usize,
+    vec: u8,
     isr: *const fn (*anyopaque, usize) callconv(idt.int_callconv) void,
 };
 
@@ -13,7 +13,7 @@ const isrs: [2]*ISRInfo = .{
 
 fn init() modules.ModuleInitError!void {
     for (isrs) |isr| {
-        idt.loadISR(isr.irq, isr.isr);
+        idt.loadISR(isr.vec, isr.isr);
     }
     asm volatile ("sti");
 }

@@ -48,10 +48,19 @@ pub const MADTEntryLAPICx2 = extern struct {
 };
 
 pub const MADTEntryLAPIC64 = extern struct {
-    type: MADTEntryType = .ioapic,
+    type: MADTEntryType = .lapic_64,
     length: u8,
     // 2 bytes padding
     lapic_addr: u64 align(4),
+};
+
+pub const MADTEntryIOAPIC = extern struct {
+    type: MADTEntryType = .ioapic,
+    length: u8,
+    id: u8,
+    rsvd: u8,
+    addr: u32,
+    base: u32,
 };
 
 pub const MADTError = error{
@@ -60,7 +69,10 @@ pub const MADTError = error{
 
 var madt_global: ?*MADT = null;
 
-pub fn findMADTEntries(res_type: type, gpa: std.mem.Allocator) MADTError![]*align(1) const res_type {
+pub fn findMADTEntries(
+    res_type: type,
+    gpa: std.mem.Allocator,
+) MADTError!std.ArrayList(*align(1) const res_type) {
     const struct_info = @typeInfo(res_type).@"struct";
     const field_type = struct_info.field_types[0];
     if (field_type != MADTEntryType) {
@@ -76,7 +88,7 @@ pub fn findMADTEntries(res_type: type, gpa: std.mem.Allocator) MADTError![]*alig
         }
         entry = @ptrFromInt(@intFromPtr(entry) + entry.length);
     }
-    return entries.items;
+    return entries;
 }
 
 fn init() modules.ModuleInitError!void {

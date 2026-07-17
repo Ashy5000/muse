@@ -8,6 +8,6 @@ fn gpf(_: *anyopaque, _: usize) callconv(idt.int_callconv) void {
 
 /// A descriptor for an GPF handler ISR.
 pub var isr_info: interrupts.ISRInfo = .{
-    .irq = 0xD,
+    .vec = 0xD,
     .isr = gpf,
 };

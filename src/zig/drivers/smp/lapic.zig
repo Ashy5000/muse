@@ -1,8 +1,12 @@
+const std = @import("std");
 const heap = @import("../../alloc/heap.zig");
 const madt = @import("madt.zig");
 const console = @import("../../console.zig");
 const virtual = @import("../../virtual.zig");
 const msr = @import("../../utils/msr.zig");
+const pic = @import("../pic.zig");
+const cpuid = @import("../../cpuid.zig");
+const cpu = @import("cpu.zig");
 const modules = @import("../../modules.zig");
 
 const SpuriousInterruptReg = packed struct(u32) {
@@ -47,36 +51,48 @@ fn enableAPIC() virtual.MapError!void {
     var base: APICBaseMSR = @bitCast(msr.getMSR(apic_base_msr));
     base.enable = true;
     msr.setMSR(apic_base_msr, @bitCast(base));
-    const base_ptr: [*]u8 = @ptrFromInt(base.addr << 12);
+    const base_ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(base.addr << 12)));
     console.print("APIC register space at {*}.\n", .{base_ptr});
-    const vbase_slice: []u8 = try virtual.mapPhysObj(base_ptr[0..@sizeOf(LAPICRegisters)], .{ .cache_mode = .Uncacheable });
+    const vbase_slice: []u8 = try virtual.mapPhysObj(
+        base_ptr[0..@sizeOf(LAPICRegisters)],
+        .{ .cache_mode = .Uncacheable },
+    );
     lapic_regs = @alignCast(@ptrCast(vbase_slice.ptr));
 }
 
-pub const LAPICInitError = error{LAPICUninit};
+pub const LAPICInitError = error{LAPICUninit} || std.mem.Allocator.Error;
 
 /// This function must be called once from each CPU. It initializes the local
 /// APIC for that core specifically, as compared to the boot module which sets
 /// up and enables APIC functionality globally.
-pub fn initLocalAPIC() LAPICInitError!void {
+pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
     const regs = lapic_regs orelse return error.LAPICUninit;
     regs.spurious_int.apic_software_enable = true;
+    try cpu.cpus.append(gpa, .{
+        .lapic_id = @intCast(lapic_regs.?.lapic_id),
+    });
 }
 
 fn init() modules.ModuleInitError!void {
+    if (!cpuid.cpu_features.?.apic) return error.ModuleUnsupported;
+
     const gpa = heap.allocator() catch return error.ModuleInitFailure;
-    const lapic_entries = madt.findMADTEntries(madt.MADTEntryLAPIC, gpa) catch return error.ModuleInitFailure;
-    for (lapic_entries) |entry| {
+    var lapic_entries = madt.findMADTEntries(
+        madt.MADTEntryLAPIC,
+        gpa,
+    ) catch return error.ModuleInitFailure;
+    defer lapic_entries.deinit(gpa);
+    for (lapic_entries.items) |entry| {
         console.print("LAPIC: {}\n", .{entry.*});
     }
 
     enableAPIC() catch return error.ModuleInitFailure;
 
-    initLocalAPIC() catch unreachable;
+    initLocalAPIC(gpa) catch unreachable;
 }
 
 pub var mod: modules.Module = .{
     .name = "lapic",
     .init = init,
-    .deps = &.{ &madt.mod, &msr.mod },
+    .deps = &.{ &madt.mod, &msr.mod, &pic.mod, &cpuid.mod },
 };

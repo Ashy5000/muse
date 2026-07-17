@@ -185,6 +185,8 @@ pub fn build(b: *std.Build) void {
         "int",
         "-smp",
         "2",
+        "-device",
+        "qemu-xhci",
     });
 
     const debug = b.option(bool, "debug", "Make QEMU wait for a GDB connection") orelse false;

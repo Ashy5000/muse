@@ -1,4 +1,5 @@
 const std = @import("std");
+const interrupts = @import("../../interrupts.zig");
 const modules = @import("../../modules.zig");
 
 const IDTEntry = packed struct {
@@ -37,10 +38,10 @@ export var idtr: IDTR = .{ .size_dec = @sizeOf(@TypeOf(idt)) - 1, .base = 0 };
 pub const int_callconv = std.lang.CallingConvention{ .x86_interrupt = .{} };
 
 /// Loads an Interrupt Service Routine corresponding with the given IRQ.
-pub fn loadISR(vec: u8, isr: *const fn (*anyopaque, usize) callconv(int_callconv) void) void {
-    idt[vec].present = true;
-    idt[vec].isr_lo = @truncate(@intFromPtr(isr));
-    idt[vec].isr_hi = @truncate(@intFromPtr(isr) >> 16);
+pub fn loadISR(info: interrupts.ISRInfo) void {
+    idt[info.vec].present = true;
+    idt[info.vec].isr_lo = @truncate(@intFromPtr(info.isr));
+    idt[info.vec].isr_hi = @truncate(@intFromPtr(info.isr) >> 16);
 }
 
 fn init() modules.ModuleInitError!void {

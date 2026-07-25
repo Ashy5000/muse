@@ -27,11 +27,6 @@ multiboot_start:
 	.long 0
 	.long 0
 	.long 0
-# .align 8
-	# Keep EFI boot services
-	# .word 7
-	# .word 0
-	# .long 8
 .align 8
 	# Terminating tag
 	.word 0
@@ -64,7 +59,7 @@ gdt_kernel_code:
 	.word 0x0
 	.byte 0x0
 	.byte 0b10011010
-	.byte 0b11101111
+	.byte 0b10101111
 	.byte 0x0
 
 gdt_kernel_data:
@@ -72,7 +67,7 @@ gdt_kernel_data:
 	.word 0x0
 	.byte 0x0
 	.byte 0b10010010
-	.byte 0b11101111
+	.byte 0b10101111
 	.byte 0x0
 
 gdt_user_code:
@@ -80,7 +75,7 @@ gdt_user_code:
 	.word 0x0
 	.byte 0x0
 	.byte 0b11111010
-	.byte 0b11101111
+	.byte 0b10101111
 	.byte 0x0
 
 gdt_user_data:
@@ -88,7 +83,7 @@ gdt_user_data:
 	.word 0x0
 	.byte 0x0
 	.byte 0b11110010
-	.byte 0b11101111
+	.byte 0b10101111
 	.byte 0x0
 
 gdt_tss:

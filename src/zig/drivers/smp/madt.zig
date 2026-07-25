@@ -92,11 +92,11 @@ pub fn findMADTEntries(
 }
 
 fn init() modules.ModuleInitError!void {
-    madt_global = @ptrCast(acpi.findSDT("APIC") catch return error.ModuleInitFailure);
+    madt_global = @ptrCast(acpi.findSDT("APIC") orelse return error.ModuleUnsupported);
 }
 
 pub var mod: modules.Module = .{
-    .name = "MADT",
+    .name = "madt",
     .init = init,
     .deps = &.{&acpi.mod},
 };

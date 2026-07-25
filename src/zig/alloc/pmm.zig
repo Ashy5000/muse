@@ -117,6 +117,8 @@ fn init() modules.ModuleInitError!void {
             const bitmap: []bitmaps.BitmapUnit = bitmap_ptr[0..len];
             @memset(bitmap, 0);
             const extra_bits: usize = len * @bitSizeOf(bitmaps.BitmapUnit) - bit_cnt;
+            // TODO: do this more efficiently with ~extra_bits +% 1, u3 instead
+            // of usize, and some @truncate action.
             const invalid_chunks: usize = if (extra_bits > 0)
                 @bitSizeOf(bitmaps.BitmapUnit) - extra_bits
             else

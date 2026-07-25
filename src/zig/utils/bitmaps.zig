@@ -6,7 +6,6 @@ pub fn bitmapFind(bitmap: []BitmapUnit) ?usize {
     for (0..bitmap.len) |i| {
         for (0..@bitSizeOf(BitmapUnit)) |j| {
             if (((bitmap[i] >> @intCast(j)) & 1) == 0) {
-                bitmap[i] |= @as(BitmapUnit, 1) << @intCast(j);
                 return i * @bitSizeOf(BitmapUnit) + j;
             }
         }

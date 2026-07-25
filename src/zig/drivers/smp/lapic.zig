@@ -19,20 +19,60 @@ const SpuriousInterruptReg = packed struct(u32) {
 };
 
 const LAPICRegisters = extern struct {
-    rsvd0: [16]u8 align(8),
-    lapic_id: u32 align(8),
-    version: u32 align(8),
-    rsvd1: [32]u8 align(8),
-    task_priority: u32 align(8),
-    arbitration_priority: u32 align(8),
-    processor_priority: u32 align(8),
-    eoi: u32 align(8),
-    remote_read: u32 align(8),
-    logical_dest: u32 align(8),
-    dest_format: u32 align(8),
-    spurious_int: SpuriousInterruptReg align(8),
-    // There are some more fields, but we don't need them right now, and
-    // the weird alignments mean that they will just clutter up the struct.
+    rsvd0: [32]u8 align(16),
+    lapic_id: u32 align(16),
+    version: u32 align(16),
+    rsvd1: [64]u8 align(16),
+    task_priority: u32 align(16),
+    arbitration_priority: u32 align(16),
+    processor_priority: u32 align(16),
+    eoi: u32 align(16),
+    remote_read: u32 align(16),
+    logical_dest: u32 align(16),
+    dest_format: u32 align(16),
+    spurious_int: SpuriousInterruptReg align(16),
+    isr0: u32 align(16),
+    isr1: u32 align(16),
+    isr2: u32 align(16),
+    isr3: u32 align(16),
+    isr4: u32 align(16),
+    isr5: u32 align(16),
+    isr6: u32 align(16),
+    isr7: u32 align(16),
+    tmr0: u32 align(16),
+    tmr1: u32 align(16),
+    tmr2: u32 align(16),
+    tmr3: u32 align(16),
+    tmr4: u32 align(16),
+    tmr5: u32 align(16),
+    tmr6: u32 align(16),
+    tmr7: u32 align(16),
+    irr0: u32 align(16),
+    irr1: u32 align(16),
+    irr2: u32 align(16),
+    irr3: u32 align(16),
+    irr4: u32 align(16),
+    irr5: u32 align(16),
+    irr6: u32 align(16),
+    irr7: u32 align(16),
+    err_status: u32 align(16),
+    rsvd2: [0x60]u8 align(16),
+    cmci: u32 align(16),
+    icr0: u32 align(16),
+    icr1: u32 align(16),
+    lvt: extern struct {
+        timer: u32 align(16),
+        thermal: u32 align(16),
+        perf: u32 align(16),
+        lint0: u32 align(16),
+        lint1: u32 align(16),
+        err: u32 align(16),
+    } align(16),
+    timer_initial_count: u32 align(16),
+    timer_current_count: u32 align(16),
+    rsvd3: [0xc0]u8 align(16),
+    timer_divide_conf: u32 align(16),
+    rsvd4: u32 align(16),
 };
 
 var lapic_regs: ?*volatile LAPICRegisters = null;
@@ -66,11 +106,17 @@ pub const LAPICInitError = error{LAPICUninit} || std.mem.Allocator.Error;
 /// APIC for that core specifically, as compared to the boot module which sets
 /// up and enables APIC functionality globally.
 pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
-    const regs = lapic_regs orelse return error.LAPICUninit;
-    regs.spurious_int.apic_software_enable = true;
+    _ = lapic_regs orelse return error.LAPICUninit;
+    lapic_regs.?.spurious_int.apic_software_enable = true;
     try cpu.cpus.append(gpa, .{
         .lapic_id = @intCast(lapic_regs.?.lapic_id),
     });
+    lapic_regs.?.timer_initial_count = 0;
+    lapic_regs.?.task_priority = 0;
+}
+
+pub fn eoi() void {
+    lapic_regs.?.eoi = 0;
 }
 
 fn init() modules.ModuleInitError!void {

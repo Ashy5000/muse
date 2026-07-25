@@ -60,16 +60,13 @@ fn verifySDT(ptr: *const sdt.DefBlockHeader, len: usize) bool {
     return checksum == 0;
 }
 
-pub const ACPIError = error{ ACPIUninit, TableNotPresent };
-
-pub fn findSDT(sig: *const [4]u8) ACPIError!*sdt.DefBlockHeader {
-    const ptrs = sdt_ptrs orelse return error.ACPIUninit;
-    for (ptrs) |ptr| {
+pub fn findSDT(sig: *const [4]u8) ?*sdt.DefBlockHeader {
+    for (sdt_ptrs.?) |ptr| {
         if (std.mem.eql(u8, ptr.signature[0..4], sig)) {
             return ptr;
         }
     }
-    return error.TableNotPresent;
+    return null;
 }
 
 /// Initializes ACPI.

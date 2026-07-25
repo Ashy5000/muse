@@ -4,6 +4,8 @@ const heap = @import("../alloc/heap.zig");
 const console = @import("../console.zig");
 const virtual = @import("../virtual.zig");
 const cpu = @import("smp/cpu.zig");
+const bitmaps = @import("../utils/bitmaps.zig");
+const interrupts = @import("../interrupts.zig");
 const modules = @import("../modules.zig");
 
 pub const IOAPIC = struct {
@@ -14,7 +16,9 @@ pub const IOAPIC = struct {
     },
     id: u4,
     version: u8,
+    base: u5,
     entry_cnt: u8,
+    input_map: u32,
 
     fn readReg(self: *const IOAPIC, reg: u32) u32 {
         self.registers.reg_select = reg;
@@ -44,19 +48,37 @@ pub const IOAPIC = struct {
         const info_reg: InfoReg = @bitCast(self.readReg(0x01));
         self.version = info_reg.version;
         self.entry_cnt = info_reg.entry_cnt;
+        self.input_map = 0;
+        const bits: std.math.Log2Int(u32) = @intCast(self.entry_cnt);
+        for (0..bits) |i| {
+            // Set = available
+            self.input_map |= @as(u32, 1) << @intCast(i);
+        }
+    }
+
+    fn alloc(self: *IOAPIC, mask: u32) ?std.math.Log2Int(u32) {
+        for (self.base..self.base + self.entry_cnt) |i_usize| {
+            const i: std.math.Log2Int(u32) = @intCast(i_usize);
+            if ((self.input_map >> i) & 1 == 1 and (mask >> i) & 1 == 1) {
+                self.input_map |= @as(u32, 1) << i;
+                return i;
+            }
+        }
+        return null;
     }
 
     const Polarity = enum(u1) { active_high, active_low };
-    const TriggerMode = enum(u1) { edge_sensitive, level_sensitive };
+    pub const TriggerMode = enum(u1) { edge_sensitive, level_sensitive };
 
     fn map(
         self: *const IOAPIC,
         irq: u8,
-        vec: u8,
+        vec: interrupts.Vec,
         polarity: Polarity,
         trigger_mode: TriggerMode,
         target: cpu.CPU,
     ) void {
+        console.print("Mapping {}->{}.\n", .{ irq, vec });
         const RedirectionEntryLow = packed struct {
             vec: u8,
             delivery_mode: enum(u3) {
@@ -80,11 +102,16 @@ pub const IOAPIC = struct {
             destination: u8,
         };
 
-        const reg_low: u32 = 0x10 + irq;
-        const reg_high: u32 = 0x11 + irq;
+        const reg_low: u32 = 0x10 + (irq * 2) - self.base;
+        const reg_high: u32 = 0x11 + (irq * 2) - self.base;
 
         var entry_low: RedirectionEntryLow = @bitCast(self.readReg(reg_low));
         var entry_high: RedirectionEntryHigh = @bitCast(self.readReg(reg_high));
+
+        // Mask out the interrupt while we are changing routing details so that
+        // triggered interrupts don't get a broken I/O APIC state.
+        entry_low.mask_interrupt = true;
+        self.writeReg(reg_low, @bitCast(entry_low));
 
         entry_low.vec = vec;
         entry_low.delivery_mode = .normal;
@@ -94,8 +121,29 @@ pub const IOAPIC = struct {
         entry_low.mask_interrupt = false;
 
         entry_high.destination = target.lapic_id;
+
+        // Write high before low so that interrupt unmasking happens at the
+        // very end.
+        self.writeReg(reg_high, @bitCast(entry_high));
+        self.writeReg(reg_low, @bitCast(entry_low));
     }
 };
+
+pub fn alloc(
+    mask: u32,
+    vec: interrupts.Vec,
+    polarity: IOAPIC.Polarity,
+    trigger_mode: IOAPIC.TriggerMode,
+    target: cpu.CPU,
+) ?std.math.Log2Int(u32) {
+    for (0..ioapics.items.len) |i| {
+        if (ioapics.items[i].alloc(mask)) |irq| {
+            ioapics.items[i].map(irq, vec, polarity, trigger_mode, target);
+            return irq;
+        }
+    }
+    return null;
+}
 
 var ioapics = std.ArrayList(IOAPIC).empty;
 
@@ -114,6 +162,7 @@ fn init() modules.ModuleInitError!void {
         ) catch return error.ModuleInitFailure;
         var ioapic: IOAPIC = undefined;
         ioapic.registers = @alignCast(@ptrCast(regs_virt.ptr));
+        ioapic.base = @intCast(entry.base);
         ioapic.detect();
         console.print("I/O APIC: {}.\n", .{ioapic});
         ioapics.append(gpa, ioapic) catch return error.ModuleInitFailure;

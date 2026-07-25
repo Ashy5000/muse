@@ -30,7 +30,7 @@ fn init() modules.ModuleInitError!void {
             return;
         }
     }
-    return error.ModuleInitFailure;
+    return error.ModuleUnsupported;
 }
 
 /// The display module, which initializes the subsystem for video output.

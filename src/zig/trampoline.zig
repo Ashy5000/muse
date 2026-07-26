@@ -15,17 +15,37 @@ pub const panic = std.debug.FullPanic(panic_mod.crashed);
 
 var task: scheduler.Task = undefined;
 
+fn meow() void {
+    while (true) {
+        console.print("b", .{});
+        asm volatile ("hlt");
+    }
+}
+
+fn woof() void {
+    while (true) {
+        console.print("c", .{});
+        asm volatile ("hlt");
+    }
+}
+
 export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_magic: u32) callconv(.c) void {
     multiboot.config(multiboot_info, multiboot_magic);
 
     modules.loadModule(&interrupts.mod) catch unreachable;
     modules.loadModule(&console.mod) catch unreachable;
-    // modules.loadModule(&pci.mod) catch unreachable;
+    modules.loadModule(&pci.mod) catch unreachable;
     modules.loadModule(&timer.mod) catch unreachable;
+
+    var ctx = contextSwitch.createKernelTask(meow) catch unreachable;
+    var ctx2 = contextSwitch.createKernelTask(woof) catch unreachable;
+    scheduler.push(&ctx);
+    scheduler.push(&ctx2);
 
     console.print("Initialization complete.\n", .{});
 
     while (true) {
+        console.print("a", .{});
         asm volatile ("hlt");
     }
 }

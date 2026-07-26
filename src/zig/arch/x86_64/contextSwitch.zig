@@ -35,5 +35,6 @@ pub fn createKernelTask(entry_point: *const fn () void) virtual.MapError!schedul
     @as(**const fn () void, @ptrFromInt(@intFromPtr(stack.ptr) + paging.page_size - @sizeOf(usize))).* = entry_point;
     return .{
         .esp = @intFromPtr(stack.ptr) + paging.page_size - stack_size,
+        .next = null,
     };
 }

@@ -1,15 +1,16 @@
 const std = @import("std");
-const heap = @import("../../alloc/heap.zig");
+const heap = @import("../alloc/heap.zig");
 const madt = @import("madt.zig");
-const console = @import("../../console.zig");
-const virtual = @import("../../virtual.zig");
-const msr = @import("../../utils/msr.zig");
-const pic = @import("../pic.zig");
-const cpuid = @import("../../cpuid.zig");
+const console = @import("../console.zig");
+const virtual = @import("../virtual.zig");
+const msr = @import("../utils/msr.zig");
+const pic = @import("../drivers/pic.zig");
+const cpuid = @import("../cpuid.zig");
 const cpu = @import("cpu.zig");
-const modules = @import("../../modules.zig");
+const scheduler = @import("../scheduler.zig");
+const modules = @import("../modules.zig");
 
-const SpuriousInterruptReg = packed struct(u32) {
+pub const SpuriousInterruptReg = packed struct(u32) {
     vec: u8,
     apic_software_enable: bool,
     focus_processor_checking: bool,
@@ -18,7 +19,7 @@ const SpuriousInterruptReg = packed struct(u32) {
     rsvd1: u19,
 };
 
-const LAPICRegisters = extern struct {
+pub const LAPICRegisters = extern struct {
     rsvd0: [32]u8 align(16),
     lapic_id: u32 align(16),
     version: u32 align(16),
@@ -75,7 +76,7 @@ const LAPICRegisters = extern struct {
     rsvd4: u32 align(16),
 };
 
-var lapic_regs: ?*volatile LAPICRegisters = null;
+pub var lapic_regs: ?*volatile LAPICRegisters = null;
 
 fn enableAPIC() virtual.MapError!void {
     const APICBaseMSR = packed struct {
@@ -110,6 +111,11 @@ pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
     lapic_regs.?.spurious_int.apic_software_enable = true;
     try cpu.cpus.append(gpa, .{
         .lapic_id = @intCast(lapic_regs.?.lapic_id),
+        .queue = .{
+            .active = try gpa.create(scheduler.Task),
+            .next = null,
+            .last = null,
+        },
     });
     lapic_regs.?.timer_initial_count = 0;
     lapic_regs.?.task_priority = 0;

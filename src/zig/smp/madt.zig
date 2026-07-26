@@ -1,7 +1,7 @@
 const std = @import("std");
-const sdt = @import("../../acpi/sdt.zig");
-const acpi = @import("../../acpi/acpi.zig");
-const modules = @import("../../modules.zig");
+const sdt = @import("../acpi/sdt.zig");
+const acpi = @import("../acpi/acpi.zig");
+const modules = @import("../modules.zig");
 
 pub const MADTFlags = packed struct(u32) {
     pic_installed: bool,

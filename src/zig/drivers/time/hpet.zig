@@ -1,11 +1,13 @@
 const sdt = @import("../../acpi/sdt.zig");
 const acpi = @import("../../acpi/acpi.zig");
 const virtual = @import("../../virtual.zig");
-const lapic = @import("../smp/lapic.zig");
+const lapic = @import("../../smp/lapic.zig");
 const ioapic = @import("../ioapic.zig");
 const console = @import("../../console.zig");
 const timer = @import("../../timer.zig");
 const interrupts = @import("../../interrupts.zig");
+const cpu = @import("../../smp/cpu.zig");
+const tick = @import("../../tick.zig");
 const idt = @import("../../arch.zig").idt;
 
 const CounterSize = enum(u1) { @"32", @"64" };
@@ -78,8 +80,7 @@ var sys_timer: ?*volatile Registers.Timer = null;
 
 var target: u64 = 0;
 
-fn tick() callconv(idt.int_callconv) void {
-    console.print("tick\n", .{});
+fn hpet_tick() callconv(idt.int_callconv) void {
     switch (sys_timer.?.info.counter_size) {
         .@"32" => {
             sys_timer.?.comparator = @as(u32, @intCast(target));
@@ -93,6 +94,8 @@ fn tick() callconv(idt.int_callconv) void {
         },
     }
     lapic.eoi();
+    asm volatile ("sti");
+    tick.tick();
 }
 
 fn init() timer.Timer.InitError!bool {
@@ -120,14 +123,14 @@ fn init() timer.Timer.InitError!bool {
         sys_timer = &registers.timers[0];
     }
     console.print("Found HPET with period 0x{x}.\n", .{timer_hpet.period});
-    const vec = interrupts.alloc(@ptrCast(&tick)) orelse return error.IDTFull; // fixme
+    const vec = interrupts.alloc(@ptrCast(&hpet_tick)) orelse return error.IDTFull; // fixme
     console.print("{}", .{sys_timer.?.info.ioapic_routing_map});
     const irq = ioapic.alloc(
         sys_timer.?.info.ioapic_routing_map,
         vec,
         .active_high,
         .edge_sensitive,
-        .{ .lapic_id = 0 },
+        cpu.getActiveCPU().*,
     ) orelse return error.NoAvailableIRQs;
     sys_timer.?.info.ioapic_irq = irq;
     return true;

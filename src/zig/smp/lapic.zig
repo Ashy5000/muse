@@ -112,9 +112,9 @@ pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
     try cpu.cpus.append(gpa, .{
         .lapic_id = @intCast(lapic_regs.?.lapic_id),
         .queue = .{
+            .sync_status = .available,
             .active = try gpa.create(scheduler.Task),
-            .next = null,
-            .last = null,
+            .list = null,
         },
     });
     lapic_regs.?.timer_initial_count = 0;

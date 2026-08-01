@@ -23,7 +23,7 @@ pub const Timer = struct {
 
 pub var system_timer: ?*Timer = null;
 
-const tick_period: IntervalPico = 1e12;
+pub const tick_period: IntervalPico = 200_000_000; // 200 microseconds
 
 fn init() modules.ModuleInitError!void {
     for (timers) |t| {

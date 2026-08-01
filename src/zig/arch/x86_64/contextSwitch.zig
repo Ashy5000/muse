@@ -28,13 +28,14 @@ comptime {
 }
 
 pub fn createKernelTask(entry_point: *const fn () void) virtual.MapError!scheduler.Task {
-    const stack_phys = @as([*]u8, @ptrFromInt(try pmm.pmmAlloc(paging.page_size)))[0..paging.page_size];
+    const stack_cap = 0x10000;
+    const stack_phys = @as([*]u8, @ptrFromInt(try pmm.pmmAlloc(stack_cap)))[0..stack_cap];
     const stack = try virtual.mapPhysObj(stack_phys, .{});
     // Return address plus 6 preserved registers
     const stack_size = 7 * @sizeOf(usize);
-    @as(**const fn () void, @ptrFromInt(@intFromPtr(stack.ptr) + paging.page_size - @sizeOf(usize))).* = entry_point;
+    @as(**const fn () void, @ptrFromInt(@intFromPtr(stack.ptr) + stack_cap - @sizeOf(usize))).* = entry_point;
     return .{
-        .esp = @intFromPtr(stack.ptr) + paging.page_size - stack_size,
+        .esp = @intFromPtr(stack.ptr) + stack_cap - stack_size,
         .next = null,
     };
 }

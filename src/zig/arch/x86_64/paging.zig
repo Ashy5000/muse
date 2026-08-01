@@ -77,9 +77,9 @@ fn resolveTable(parent: *[page_entries]PageEntry, idx: u9, clear_addr: ?*[page_e
     } };
     const table_paddr: usize = try pmm.pmmAlloc(page_size);
     const table: *[page_entries]PageEntry = clear_addr orelse @ptrFromInt(table_paddr);
-    @memset(table, .{ .int = 0 });
-    entry.int |= @intFromPtr(table);
+    entry.int |= table_paddr;
     parent[idx] = entry;
+    @memset(table, .{ .int = 0 });
 }
 
 fn applyPATIndex(entry: *PageEntry, vflags: virtual.Vflags, size: PageSize) void {

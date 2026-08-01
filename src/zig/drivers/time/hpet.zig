@@ -93,9 +93,9 @@ fn hpet_tick() callconv(idt.int_callconv) void {
             sys_timer.?.comparator = target;
         },
     }
+    tick.tick();
     lapic.eoi();
     asm volatile ("sti");
-    tick.tick();
 }
 
 fn init() timer.Timer.InitError!bool {

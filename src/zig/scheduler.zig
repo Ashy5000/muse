@@ -54,6 +54,8 @@ pub fn preempt() void {
     if (@atomicLoad(@TypeOf(queue.sync_status), &queue.sync_status, .acquire) != .available) {
         return;
     }
+    @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .in_use, .monotonic);
+    defer @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .available, .release);
     if (queue.list) |*list| {
         queue.active.next = null;
         list.last.next = queue.active;

@@ -37,7 +37,7 @@ multiboot_end:
 .section .bss
 .align 16
 stack_bottom:
-.skip 0x2000
+.skip 0x10000
 stack_top:
 
 .section .rodata

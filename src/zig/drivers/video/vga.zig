@@ -1,5 +1,5 @@
 const multiboot = @import("../../multiboot.zig");
-const display = @import("../../display.zig");
+const display = @import("../../subsystems/display.zig");
 const virtual = @import("../../virtual.zig");
 const paging = @import("../../arch/x86/paging.zig");
 
@@ -20,8 +20,8 @@ fn init() bool {
         .height = vga_tag.height,
         .pitch = vga_tag.pitch,
     };
-    display_vga.width = fb.width;
-    display_vga.height = fb.height;
+    driver_display.width = fb.width;
+    driver_display.height = fb.height;
     const bfr_phys: [*]u8 = @ptrFromInt(@as(usize, @intCast(vga_tag.addr)));
     fb.bfr = (virtual.mapPhysObj(bfr_phys[0 .. fb.pitch * fb.height], .{ .cache_mode = .WriteCombining }) catch return false).ptr;
     framebuffer = fb;
@@ -66,7 +66,7 @@ pub fn scrollGrid(inc: usize) display.DisplayDrawError!void {
     @memset(fb.bfr[fb.pitch * (top_aligned - inc) .. fb.pitch * fb.height], 0);
 }
 
-pub var display_vga: display.Display = .{
+pub var driver_display: display.Driver = .{
     .width = 0,
     .height = 0,
     .init = init,

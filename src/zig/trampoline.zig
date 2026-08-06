@@ -5,10 +5,10 @@ const modules = @import("modules.zig");
 const console = @import("console.zig");
 const panic_mod = @import("panic.zig");
 const interrupts = @import("interrupts.zig");
-const pci = @import("drivers/pci.zig");
+const pci = @import("subsystems/pci.zig");
 const cpuid = @import("cpuid.zig");
 const scheduler = @import("scheduler.zig");
-const timer = @import("timer.zig");
+const timer = @import("subsystems/timer.zig");
 const tick = @import("tick.zig");
 const contextSwitch = @import("arch.zig").contextSwitch;
 
@@ -29,8 +29,8 @@ export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_ma
 
     modules.loadModule(&interrupts.mod) catch unreachable;
     modules.loadModule(&console.mod) catch unreachable;
-    modules.loadModule(&pci.mod) catch unreachable;
     modules.loadModule(&timer.mod) catch unreachable;
+    modules.loadModule(&pci.mod) catch unreachable;
 
     var ctx = contextSwitch.createKernelTask(meow) catch unreachable;
     scheduler.push(&ctx);

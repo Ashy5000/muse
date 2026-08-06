@@ -3,11 +3,12 @@ const io = @import("../utils/io.zig");
 const console = @import("../console.zig");
 const heap = @import("../alloc/heap.zig");
 const modules = @import("../modules.zig");
+const drivers = @import("../drivers.zig");
 
 const pci_config_addr: io.Port = 0xcf8;
 const pci_config_data: io.Port = 0xcfc;
 
-const PCIDev = struct {
+pub const PCIDev = struct {
     bus: u8,
     slot: u5,
     func: u3,
@@ -140,40 +141,53 @@ const PCIDev = struct {
         addr: usize,
     };
 
-    const BAR = union(enum) {
-        mem: BARMemResolved,
-        io: BARIOResolved,
+    pub const BAR = struct {
+        idx: u3,
+        data: union(enum) {
+            mem: BARMemResolved,
+            io: BARIOResolved,
+        },
     };
 
-    fn getBAR(dev: *const PCIDev, idx: u8) ?BAR {
-        const bar_int: u32 = dev.readConfigSpace(0x10 + 0x4 * idx);
+    fn getBAR(dev: *const PCIDev, idx: u3) ?BAR {
+        const bar_int: u32 = dev.readConfigSpace(
+            @as(u8, 0x10) + @as(u8, 0x4) * idx,
+        );
         if (bar_int == 0) {
             return null;
         }
         if ((bar_int & 0x1) == 0) {
             // Mem
             const bar_mem: BARMem = @bitCast(bar_int);
-            var res: BAR = .{ .mem = .{
-                .bar_mem_type = bar_mem.bar_mem_type,
-                .prefetchable = bar_mem.prefetchable,
-                .addr = @as(usize, bar_mem.addr_hi) << 4,
-            } };
-            if (res.mem.bar_mem_type == .@"64") {
-                const addr_ext: usize = dev.readConfigSpace(0x10 + 0x4 * (idx + 1));
+            var res: BAR = .{
+                .idx = idx,
+                .data = .{ .mem = .{
+                    .bar_mem_type = bar_mem.bar_mem_type,
+                    .prefetchable = bar_mem.prefetchable,
+                    .addr = @as(usize, bar_mem.addr_hi) << 4,
+                } },
+            };
+            if (res.data.mem.bar_mem_type == .@"64") {
+                const addr_ext: usize = dev.readConfigSpace(
+                    @as(u8, 0x10) + @as(u8, 0x4) * (idx + 1),
+                );
                 // We can be sure we won't get a 64-bit memory address on a 32-bit machine,
                 // so we can safely store addresses with type `usize`, and only parse 64-bit
                 // BARs when `usize` is at least 64 bits wide.
                 if (@bitSizeOf(usize) >= 64) {
-                    res.mem.addr |= addr_ext << 32;
+                    res.data.mem.addr |= addr_ext << 32;
                 }
             }
             return res;
         }
         // IO
         const bar_io: BARIO = @bitCast(bar_int);
-        return .{ .io = .{
-            .addr = @as(u32, bar_io.addr_hi) << 2,
-        } };
+        return .{
+            .idx = idx,
+            .data = .{ .io = .{
+                .addr = @as(u32, bar_io.addr_hi) << 2,
+            } },
+        };
     }
 
     const Status = packed struct {
@@ -218,6 +232,12 @@ const PCIDev = struct {
     }
 };
 
+pub const Driver = struct {
+    init: *const fn (dev: *PCIDev) void,
+    class_major: PCIDev.PCIClassMajor,
+    class_minor: u8,
+};
+
 fn scanPCIFunc(bus: u8, slot: u5, func: u3, allocator: std.mem.Allocator) std.mem.Allocator.Error!?PCIDev {
     var dev: PCIDev = undefined;
     dev.bus = bus;
@@ -234,7 +254,13 @@ fn scanPCIFunc(bus: u8, slot: u5, func: u3, allocator: std.mem.Allocator) std.me
     if (dev.type_byte.type == .bridge_pci_pci) {
         try scanPCIBus(dev.getSecondaryBus().?, allocator);
     }
-    console.print("{x:0>2}:{x:0>2}.{x} {s}: Vendor: {x}\n", .{ bus, slot, func, @tagName(dev.class.major), dev.vendor });
+    console.print("{x:0>2}:{x:0>2}.{x} {s}: Vendor: {x}.", .{
+        bus,
+        slot,
+        func,
+        @tagName(dev.class.major),
+        dev.vendor,
+    });
 
     dev.bars = null;
     if (dev.type_byte.type != .bridge_pci_cardbus) {
@@ -245,7 +271,7 @@ fn scanPCIFunc(bus: u8, slot: u5, func: u3, allocator: std.mem.Allocator) std.me
         while (i < bar_cnt) : (i += 1) {
             const bar = dev.getBAR(@intCast(i));
             if (bar) |b| {
-                switch (b) {
+                switch (b.data) {
                     .mem => |m| {
                         console.print("Found memory BAR with base 0x{x}.\n", .{m.addr});
                         // 64-bit memory BARs take up 2 entries, so skip an extra 1.
@@ -262,6 +288,13 @@ fn scanPCIFunc(bus: u8, slot: u5, func: u3, allocator: std.mem.Allocator) std.me
         const present_bars = try allocator.alloc(PCIDev.BAR, present_bar_cnt);
         @memcpy(present_bars, bars[0..present_bar_cnt]);
         dev.bars = present_bars;
+    }
+
+    for (drivers.drivers_pci) |driver| {
+        if (driver.class_major == dev.class.major and driver.class_minor == dev.class.minor) {
+            driver.init(&dev);
+            break;
+        }
     }
 
     return dev;

@@ -1,5 +1,5 @@
 const std = @import("std");
-const timer = @import("timer.zig");
+const timer = @import("subsystems/timer.zig");
 const scheduler = @import("scheduler.zig");
 const cpu = @import("smp/cpu.zig");
 

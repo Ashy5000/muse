@@ -63,18 +63,50 @@ fn setStatusWithinRegion(
     }
 }
 
+fn pmmAllocInRegion(req_size: usize, region: global.Region) PMMError!usize {
+    const size = std.mem.Alignment.forward(std.mem.Alignment.fromByteUnits(min_chunk_size), req_size);
+    const tier_idx = std.math.log2_int_ceil(usize, size) - min_chunk_size_log;
+    const tiers = region.bitmaps orelse return error.PMMUninit;
+    const idx = bitmaps.bitmapFind(tiers[tier_idx]) orelse return error.PMMNoMem;
+    const addr: usize = region.start + idx * (min_chunk_size << @intCast(tier_idx));
+    setStatusWithinRegion(region, addr, size, true);
+    return addr;
+}
+
 /// Allocates a region of physical memory with a given size and returns its
 /// physical address, guarenteed to be aligned to its size rounded up to the
 /// next power of 2.
 pub fn pmmAlloc(req_size: usize) PMMError!usize {
-    const size = std.mem.Alignment.forward(std.mem.Alignment.fromByteUnits(min_chunk_size), req_size);
-    const tier_idx = std.math.log2_int_ceil(usize, size) - min_chunk_size_log;
     for (global.info.regions) |region| {
-        const tiers = region.bitmaps orelse return error.PMMUninit;
-        const idx = bitmaps.bitmapFind(tiers[tier_idx]) orelse continue;
-        const addr: usize = region.start + idx * (min_chunk_size << @intCast(tier_idx));
-        setStatusWithinRegion(region, addr, size, true);
-        return addr;
+        if (region.start < 0xffffffff) {
+            continue;
+        }
+        return pmmAllocInRegion(req_size, region) catch |err| switch (err) {
+            error.PMMNoMem => continue,
+            else => return err,
+        };
+    }
+    for (global.info.regions) |region| {
+        if (region.start >= 0xffffffff) {
+            continue;
+        }
+        return pmmAllocInRegion(req_size, region) catch |err| switch (err) {
+            error.PMMNoMem => continue,
+            else => return err,
+        };
+    }
+    return error.PMMNoMem;
+}
+
+pub fn pmmAllocLow(req_size: usize) PMMError!usize {
+    for (global.info.regions) |region| {
+        if (region.start + region.pg_cnt * paging.page_size > 0xffffffff) {
+            continue; // TODO: Send pmmAllocInRegion a truncated region
+        }
+        return pmmAllocInRegion(req_size, region) catch |err| switch (err) {
+            error.PMMNoMem => continue,
+            else => return err,
+        };
     }
     return error.PMMNoMem;
 }

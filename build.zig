@@ -201,4 +201,19 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&qemu_step.step);
 
     b.installArtifact(exe);
+
+    const subsystems_mod = b.addModule("subsystems", .{
+        .root_source_file = b.path("tools/subsystems.zig"),
+        .target = b.standardTargetOptions(.{}),
+    });
+    const subsystems = b.addExecutable(.{
+        .name = "subsystems",
+        .root_module = subsystems_mod,
+    });
+    const subsystems_run = b.addRunArtifact(subsystems);
+    const generated_drivers_file = subsystems_run.addOutputFileArg("drivers.zig");
+    const write_drivers = b.addUpdateSourceFiles();
+    write_drivers.addCopyFileToSource(generated_drivers_file, "src/zig/drivers.zig");
+    const update_drivers = b.step("update-drivers", "Configure and update src/drivers/drivers.zig");
+    update_drivers.dependOn(&write_drivers.step);
 }

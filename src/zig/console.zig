@@ -1,11 +1,11 @@
 const std = @import("std");
 const psf = @import("psf.zig");
-const display = @import("display.zig");
+const display = @import("subsystems/display.zig");
 const io = @import("utils/io.zig");
 const modules = @import("modules.zig");
 
 const Console = struct {
-    d: *display.Display,
+    d: *display.Driver,
     x: usize,
     y: usize,
 };

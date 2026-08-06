@@ -1,18 +1,17 @@
 const std = @import("std");
-const vga = @import("drivers/video/vga.zig");
-const modules = @import("modules.zig");
+const vga = @import("../drivers/video/vga.zig");
+const modules = @import("../modules.zig");
+const drivers = @import("../drivers.zig");
 
 /// A type capable of representing a color.
 pub const Color = u24;
-
-const displays: [1]*Display = .{&vga.display_vga};
 
 /// An error produced while drawing to a display.
 pub const DisplayDrawError = vga.VGADrawError;
 
 /// A display output that supports initialization, pixel plotting, and
 /// scrolling.
-pub const Display = struct {
+pub const Driver = struct {
     width: usize,
     height: usize,
     init: *const fn () bool,
@@ -21,10 +20,10 @@ pub const Display = struct {
 };
 
 /// The primary system display, used for the system console.
-pub var display_primary: ?*Display = null;
+pub var display_primary: ?*Driver = null;
 
 fn init() modules.ModuleInitError!void {
-    for (displays) |d| {
+    for (drivers.drivers_display) |d| {
         if (d.init()) {
             display_primary = d;
             return;
@@ -37,5 +36,5 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "display",
     .init = init,
-    .deps = &.{ &@import("multiboot.zig").mod, &@import("virtual.zig").mod },
+    .deps = &.{ &@import("../multiboot.zig").mod, &@import("../virtual.zig").mod },
 };

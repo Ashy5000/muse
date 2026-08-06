@@ -4,7 +4,7 @@ const virtual = @import("../../virtual.zig");
 const lapic = @import("../../smp/lapic.zig");
 const ioapic = @import("../ioapic.zig");
 const console = @import("../../console.zig");
-const timer = @import("../../timer.zig");
+const timer = @import("../../subsystems/timer.zig");
 const interrupts = @import("../../interrupts.zig");
 const cpu = @import("../../smp/cpu.zig");
 const tick = @import("../../tick.zig");
@@ -89,7 +89,7 @@ fn hpet_tick() callconv(idt.int_callconv) void {
             registers.config.enable = true;
         },
         .@"64" => {
-            target += timer_hpet.period * 1000 / registers.general.period;
+            target += driver_timer.period * 1000 / registers.general.period;
             sys_timer.?.comparator = target;
         },
     }
@@ -98,7 +98,7 @@ fn hpet_tick() callconv(idt.int_callconv) void {
     asm volatile ("sti");
 }
 
-fn init() timer.Timer.InitError!bool {
+fn init() timer.Driver.InitError!bool {
     // Disable the PIT (this method is a little sketchy though)
     const io = @import("../../utils/io.zig");
     io.out8(0x43, 0b00110000);
@@ -122,8 +122,8 @@ fn init() timer.Timer.InitError!bool {
     if (sys_timer) |_| {} else {
         sys_timer = &registers.timers[0];
     }
-    console.print("Found HPET with period 0x{x}.\n", .{timer_hpet.period});
-    const vec = interrupts.alloc(@ptrCast(&hpet_tick)) orelse return error.IDTFull; // fixme
+    console.print("Found HPET with period 0x{x}.\n", .{driver_timer.period});
+    const vec = interrupts.alloc(@ptrCast(&hpet_tick)) orelse return error.IDTFull;
     console.print("{}", .{sys_timer.?.info.ioapic_routing_map});
     const irq = ioapic.alloc(
         sys_timer.?.info.ioapic_routing_map,
@@ -142,12 +142,12 @@ fn enable() void {
     sys_timer.?.info.int_enable = true;
     sys_timer.?.info.periodic_enable = false;
     sys_timer.?.info.force_32_bit = false;
-    target = timer_hpet.period * 1000 / registers.general.period;
+    target = driver_timer.period * 1000 / registers.general.period;
     sys_timer.?.comparator = target;
     registers.config.enable = true;
 }
 
-pub var timer_hpet: timer.Timer = .{
+pub var driver_timer: timer.Driver = .{
     .init = init,
     .enable = enable,
     .period = undefined,

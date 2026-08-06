@@ -1,4 +1,4 @@
-const display = @import("display.zig");
+const display = @import("subsystems/display.zig");
 const modules = @import("modules.zig");
 
 const psf_magic: u32 = 0x864AB572;
@@ -23,7 +23,7 @@ pub const PSFDrawError = error{
     PSFUninit,
 } || display.DisplayDrawError;
 
-pub fn put_char(d: *display.Display, char: u8, grid_x: usize, grid_y: usize, color: display.Color) PSFDrawError!void {
+pub fn put_char(d: *display.Driver, char: u8, grid_x: usize, grid_y: usize, color: display.Color) PSFDrawError!void {
     const f = font orelse return error.PSFUninit;
     const x_c = grid_x * f.glyph_width;
     const y_c = grid_y * f.glyph_height;

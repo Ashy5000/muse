@@ -28,7 +28,7 @@ const TargetSpecificInfo = struct {
     bios: []const u8,
 };
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const Target = std.Target.x86;
     const target = b.resolveTargetQuery(.{
@@ -67,6 +67,13 @@ pub fn build(b: *std.Build) void {
     });
     mod.addAssemblyFile(info.bootstrap_asm);
 
+    const font_path = b.option(
+        []const u8,
+        "font_path",
+        "path to a PSF console font",
+    ) orelse "font.psf";
+    mod.addAnonymousImport("font", .{ .root_source_file = b.graph.cwdRelativePath(font_path) });
+
     const exe = b.addExecutable(.{
         .name = "muse_trampoline",
         .root_module = mod,
@@ -78,10 +85,10 @@ pub fn build(b: *std.Build) void {
     const wf = b.addWriteFiles();
     const efi = wf.add(info.efi, &.{});
 
-    const grub_step = b.addSystemCommand(&.{"/home/ashy5000/etc/grub-build/grub-mkstandalone"});
+    const grub_step = b.addSystemCommand(&.{"grub-mkstandalone"});
     grub_step.addArgs(&.{
-        "-d",
-        info.grub_path,
+        // "-d",
+        // info.grub_path,
         "-O",
     });
     grub_step.addArg(info.grub_arch);
@@ -175,7 +182,21 @@ pub fn build(b: *std.Build) void {
     });
     qemu_step.addPrefixedFileArg("format=raw,file=", disk);
     qemu_step.addArg("-drive");
-    qemu_step.addArg(info.bios);
+
+    const firmware_path = b.option(
+        []const u8,
+        "firmware_path",
+        "path to UEFI firmware for QEMU",
+    ) orelse {
+        std.debug.print("Missing -Dfirmware_path.\n", .{});
+        return error.NoFirmware;
+    };
+
+    qemu_step.addArg(try std.mem.concat(
+        b.allocator,
+        u8,
+        &.{ "if=pflash,format=raw,readonly=on,file=", firmware_path },
+    ));
     qemu_step.addArgs(&.{
         "-no-reboot",
         "-no-shutdown",

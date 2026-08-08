@@ -3,7 +3,7 @@ const modules = @import("modules.zig");
 
 const psf_magic: u32 = 0x864AB572;
 
-const font_file = @embedFile("font.psf");
+const font_file = @embedFile("font");
 
 const Font = extern struct {
     magic: u32,

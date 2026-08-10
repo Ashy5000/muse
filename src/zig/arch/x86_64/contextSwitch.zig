@@ -27,7 +27,9 @@ comptime {
     );
 }
 
-pub fn createKernelTask(entry_point: *const fn () void) virtual.MapError!scheduler.Task {
+pub fn createKernelTask(
+    entry_point: *const fn () void,
+) virtual.MapError!scheduler.Task {
     const stack_cap = 0x10000;
     const stack_phys = @as([*]u8, @ptrFromInt(try pmm.pmmAlloc(stack_cap)))[0..stack_cap];
     const stack = try virtual.mapPhysObj(stack_phys, .{});

@@ -1,6 +1,27 @@
 pub const Port = u16;
 
-pub fn out8(port: Port, data: u8) void {
+pub fn out(
+    comptime bits: u16,
+    port: Port,
+    data: @Int(.unsigned, bits),
+) void {
+    switch (bits) {
+        8 => out8(port, data),
+        32 => out32(port, data),
+        else => @compileError("unsupported I/O write bit width"),
+    }
+}
+
+pub fn in(comptime bits: u16, port: Port) @Int(.unsigned, bits) {
+    return switch (bits) {
+        8 => in8(port),
+        16 => in16(port),
+        32 => in32(port),
+        else => @compileError("unsupported I/O read bit width"),
+    };
+}
+
+fn out8(port: Port, data: u8) void {
     asm volatile (
         \\ outb %%al, (%%dx)
         :
@@ -9,7 +30,7 @@ pub fn out8(port: Port, data: u8) void {
     );
 }
 
-pub fn in8(port: Port) u8 {
+fn in8(port: Port) u8 {
     return asm volatile (
         \\ inb (%%dx), %%al
         : [data] "={al}" (-> u8),
@@ -17,7 +38,7 @@ pub fn in8(port: Port) u8 {
     );
 }
 
-pub fn in16(port: Port) u16 {
+fn in16(port: Port) u16 {
     return asm volatile (
         \\ inw (%%dx), %%ax
         : [data] "={ax}" (-> u16),
@@ -25,7 +46,7 @@ pub fn in16(port: Port) u16 {
     );
 }
 
-pub fn out32(port: Port, data: u32) void {
+fn out32(port: Port, data: u32) void {
     asm volatile (
         \\ outl %%eax, (%%dx)
         :
@@ -34,7 +55,7 @@ pub fn out32(port: Port, data: u32) void {
     );
 }
 
-pub fn in32(port: Port) u32 {
+fn in32(port: Port) u32 {
     return asm volatile (
         \\ inl (%%dx), %%eax
         : [data] "={eax}" (-> u32),

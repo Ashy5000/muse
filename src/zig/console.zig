@@ -26,7 +26,7 @@ fn maybeScroll(cons: *Console) ConsolePrintError!void {
 
 fn printChar(char: u8) ConsolePrintError!void {
     var cons = &(console orelse return error.ConsoleUninit);
-    io.out8(0xe9, char);
+    io.out(8, 0xe9, char);
     if (char == '\n') {
         cons.x = 0;
         cons.y += 1;

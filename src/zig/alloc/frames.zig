@@ -22,7 +22,7 @@ var frame_alloc_global: ?FrameAllocInfo = null;
 
 /// Allocates a page-sized chunk of virtual memory, which may or may not be
 /// mapped to a physical page.
-pub fn frameAlloc() FrameAllocError![*]align(paging.page_size) u8 {
+pub fn frameAlloc() FrameAllocError![]align(paging.page_size) u8 {
     const info: FrameAllocInfo = frame_alloc_global orelse return error.FrameAllocUninit;
     const idx: usize = bitmaps.bitmapAlloc(info.bitmap) orelse return error.FrameAllocNoMem;
     return info.start + (idx * paging.page_size);
@@ -30,16 +30,18 @@ pub fn frameAlloc() FrameAllocError![*]align(paging.page_size) u8 {
 
 /// Allocates `cnt` contiguous page-sized chunks of virtual memory, which
 /// may or may not be mapped to physical pages.
-pub fn frameAllocContig(cnt: usize) FrameAllocError![*]align(paging.page_size) u8 {
+pub fn frameAllocContig(cnt: usize) FrameAllocError![]align(paging.page_size) u8 {
     const info: FrameAllocInfo = frame_alloc_global orelse return error.FrameAllocUninit;
     const idx: usize = bitmaps.bitmapAllocContig(info.bitmap, cnt) orelse return error.FrameAllocNoMem;
-    return @alignCast(info.start + (idx * paging.page_size));
+    return @alignCast(
+        (info.start + (idx * paging.page_size))[0 .. cnt * paging.page_size],
+    );
 }
 
 /// Frees a page-sized chunk of virtual memory, not modifying its page mapping.
-pub fn frameFree(start: *align(paging.page_size) u8) void {
+pub fn frameFree(start: usize) void {
     const info: FrameAllocInfo = frame_alloc_global orelse return;
-    const idx = (start - info.start) / paging.page_size;
+    const idx = (start - @intFromPtr(info.start)) / paging.page_size;
     bitmaps.bitmapSet(info.bitmap, idx, false);
 }
 

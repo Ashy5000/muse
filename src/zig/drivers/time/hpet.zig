@@ -101,9 +101,9 @@ fn hpet_tick() callconv(idt.int_callconv) void {
 fn init() timer.Driver.InitError!bool {
     // Disable the PIT (this method is a little sketchy though)
     const io = @import("../../utils/io.zig");
-    io.out8(0x43, 0b00110000);
-    io.out8(0x40, 0x00);
-    io.out8(0x40, 0x00);
+    io.out(8, 0x43, 0b00110000);
+    io.out(8, 0x40, 0x00);
+    io.out(8, 0x40, 0x00);
 
     const table: *HPET = @ptrCast(acpi.findSDT("HPET") orelse return false);
     const regs_phys: [*]u8 = @ptrFromInt(@as(usize, @intCast(table.addr)));
@@ -111,7 +111,7 @@ fn init() timer.Driver.InitError!bool {
         regs_phys[0..@sizeOf(Registers)],
         .{ .cache_mode = .Uncacheable },
     );
-    registers = @alignCast(@ptrCast(regs_virt.ptr));
+    registers = @ptrCast(@alignCast(regs_virt.ptr));
     registers.config.enable = false;
     for (0..registers.general.id.comparator_count + 1) |i| {
         registers.timers[i].info.int_enable = false;

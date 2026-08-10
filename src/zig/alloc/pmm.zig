@@ -98,15 +98,15 @@ pub fn pmmAlloc(req_size: usize) PMMError!usize {
     return error.PMMNoMem;
 }
 
-pub fn pmmAllocLow(req_size: usize) PMMError!usize {
+pub fn pmmAllocLow(req_size: usize) PMMError!u32 {
     for (global.info.regions) |region| {
         if (region.start + region.pg_cnt * paging.page_size > 0xffffffff) {
             continue; // TODO: Send pmmAllocInRegion a truncated region
         }
-        return pmmAllocInRegion(req_size, region) catch |err| switch (err) {
+        return @intCast(pmmAllocInRegion(req_size, region) catch |err| switch (err) {
             error.PMMNoMem => continue,
             else => return err,
-        };
+        });
     }
     return error.PMMNoMem;
 }

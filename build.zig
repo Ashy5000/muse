@@ -203,7 +203,7 @@ pub fn build(b: *std.Build) !void {
         // "-debugcon",
         // "stdio",
         "-d",
-        "int,trace:hpet*,trace:ioapic*,trace:apic*",
+        "trace:ide*",
         "-smp",
         "2",
     });

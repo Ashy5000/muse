@@ -4,6 +4,7 @@ const console = @import("../console.zig");
 const heap = @import("../alloc/heap.zig");
 const modules = @import("../modules.zig");
 const drivers = @import("../drivers.zig");
+const virtual = @import("../virtual.zig");
 
 const pci_config_addr: io.Port = 0xcf8;
 const pci_config_data: io.Port = 0xcfc;
@@ -33,8 +34,8 @@ pub const PCIDev = struct {
             .func = dev.func,
             .reg_offset = offset,
         };
-        io.out32(pci_config_addr, @bitCast(addr));
-        return io.in32(pci_config_data);
+        io.out(32, pci_config_addr, @bitCast(addr));
+        return io.in(32, pci_config_data);
     }
 
     const PCIVendor = enum(u16) {
@@ -134,12 +135,11 @@ pub const PCIDev = struct {
     const BARMemResolved = struct {
         bar_mem_type: BARMemType,
         prefetchable: bool,
-        addr: usize,
+        paddr: usize,
+        virt: ?[]u8 = null,
     };
 
-    const BARIOResolved = struct {
-        addr: usize,
-    };
+    const BARIOResolved = struct { port: io.Port };
 
     pub const BAR = struct {
         idx: u3,
@@ -147,6 +147,39 @@ pub const PCIDev = struct {
             mem: BARMemResolved,
             io: BARIOResolved,
         },
+
+        pub fn write(
+            bar: *BAR,
+            comptime bits: u16,
+            offset: usize,
+            data: @Int(.unsigned, bits),
+        ) void {
+            switch (bar.data) {
+                .mem => |data_mem| {
+                    @as(
+                        *@Int(.unsigned, bits),
+                        &data_mem.virt[offset],
+                    ).* = data;
+                },
+                .io => |data_io| {
+                    io.out(bits, data_io.port, data);
+                },
+            }
+        }
+
+        pub fn read(
+            bar: *const BAR,
+            comptime bits: u16,
+            offset: usize,
+        ) @Int(.unsigned, bits) {
+            return switch (bar.data) {
+                .mem => |data_mem| @as(
+                    *@Int(.unsigned, bits),
+                    &data_mem.virt[offset],
+                ).*,
+                .io => |data_io| io.in(bits, data_io.port),
+            };
+        }
     };
 
     fn getBAR(dev: *const PCIDev, idx: u3) ?BAR {
@@ -164,7 +197,7 @@ pub const PCIDev = struct {
                 .data = .{ .mem = .{
                     .bar_mem_type = bar_mem.bar_mem_type,
                     .prefetchable = bar_mem.prefetchable,
-                    .addr = @as(usize, bar_mem.addr_hi) << 4,
+                    .paddr = @as(usize, bar_mem.addr_hi) << 4,
                 } },
             };
             if (res.data.mem.bar_mem_type == .@"64") {
@@ -175,7 +208,7 @@ pub const PCIDev = struct {
                 // so we can safely store addresses with type `usize`, and only parse 64-bit
                 // BARs when `usize` is at least 64 bits wide.
                 if (@bitSizeOf(usize) >= 64) {
-                    res.data.mem.addr |= addr_ext << 32;
+                    res.data.mem.paddr |= addr_ext << 32;
                 }
             }
             return res;
@@ -185,7 +218,7 @@ pub const PCIDev = struct {
         return .{
             .idx = idx,
             .data = .{ .io = .{
-                .addr = @as(u32, bar_io.addr_hi) << 2,
+                .port = @as(io.Port, @intCast(bar_io.addr_hi << 2)),
             } },
         };
     }
@@ -279,7 +312,7 @@ fn scanPCIFunc(bus: u8, slot: u5, func: u3, allocator: std.mem.Allocator) std.me
                             i += 1;
                         }
                     },
-                    .io => |m| console.print("Found I/O BAR with base 0x{x}.\n", .{m.addr}),
+                    .io => |m| console.print("Found I/O BAR with base 0x{x}.\n", .{m.port}),
                 }
                 bars[present_bar_cnt] = b;
                 present_bar_cnt += 1;

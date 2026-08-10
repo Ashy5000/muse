@@ -98,7 +98,7 @@ fn enableAPIC() virtual.MapError!void {
         base_ptr[0..@sizeOf(LAPICRegisters)],
         .{ .cache_mode = .Uncacheable },
     );
-    lapic_regs = @alignCast(@ptrCast(vbase_slice.ptr));
+    lapic_regs = @ptrCast(@alignCast(vbase_slice.ptr));
 }
 
 pub const LAPICInitError = error{LAPICUninit} || std.mem.Allocator.Error;

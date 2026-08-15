@@ -63,11 +63,22 @@ pub const MADTEntryIOAPIC = extern struct {
     base: u32,
 };
 
+pub const MADTEntryInterruptOverride = extern struct {
+    type: MADTEntryType = .ioapic_int_override,
+    length: u8,
+    bus_src: u8,
+    src_legacy: u8,
+    dest_apic: u32,
+    flags: u16,
+};
+
 pub const MADTError = error{
     NoMADT,
 } || std.mem.Allocator.Error;
 
 var madt_global: ?*MADT = null;
+
+var overrides: ?std.ArrayList(*align(1) const MADTEntryInterruptOverride) = null;
 
 pub fn findMADTEntries(
     res_type: type,
@@ -92,7 +103,22 @@ pub fn findMADTEntries(
 }
 
 fn init() modules.ModuleInitError!void {
-    madt_global = @ptrCast(acpi.findSDT("APIC") orelse return error.ModuleUnsupported);
+    madt_global = @ptrCast(
+        acpi.findSDT("APIC") orelse return error.ModuleUnsupported,
+    );
+}
+
+pub fn redirectionInfo(legacy_irq: u8, gpa: std.mem.Allocator) MADTError!?u32 {
+    const entries = overrides orelse new: {
+        overrides = try findMADTEntries(MADTEntryInterruptOverride, gpa);
+        break :new overrides;
+    };
+    for (entries.items) |entry| {
+        if (entry.src_legacy == legacy_irq) {
+            return entry.dest_apic;
+        }
+    }
+    return null;
 }
 
 pub var mod: modules.Module = .{

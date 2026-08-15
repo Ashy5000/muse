@@ -3,7 +3,6 @@ const std = @import("std");
 const virtual = @import("../../virtual.zig");
 const pmm = @import("../../alloc/pmm.zig");
 const msr = @import("../../utils/msr.zig");
-const elf = @import("../../elf.zig");
 const cpuid = @import("../../cpuid.zig");
 const modules = @import("../../modules.zig");
 
@@ -59,9 +58,11 @@ const PageSize = enum(usize) {
     @"1g" = 1024 * 1024 * 1024,
 };
 
+pub const MapError = pmm.AllocError || modules.InitError;
+
 // The following functions are used multiple times throughout the lifetime of the OS.
 
-fn resolveTable(parent: *[page_entries]PageEntry, idx: u9, clear_addr: ?*[page_entries]PageEntry) pmm.PMMError!void {
+fn resolveTable(parent: *[page_entries]PageEntry, idx: u9, clear_addr: ?*[page_entries]PageEntry) pmm.AllocError!void {
     if (parent[idx].fields.present) {
         return;
     }
@@ -82,9 +83,12 @@ fn resolveTable(parent: *[page_entries]PageEntry, idx: u9, clear_addr: ?*[page_e
     @memset(table, .{ .int = 0 });
 }
 
-fn applyPATIndex(entry: *PageEntry, vflags: virtual.Vflags, size: PageSize) void {
+fn applyPATIndex(entry: *PageEntry, vflags: virtual.Vflags, size: PageSize) MapError!void {
     var res = entry;
-    const pat_idx: u3 = if (msr.mod.inited) @intFromEnum(vflags.cache_mode) else 0;
+    const pat_idx: u3 = if ((try cpuid.mod.data(cpuid.Info)).features.msr)
+        @intFromEnum(vflags.cache_mode)
+    else
+        0;
     res.fields.pat_1 = (pat_idx & 0x2) > 0;
     res.fields.pat_2 = (pat_idx & 0x4) > 0;
     switch (size) {
@@ -96,10 +100,10 @@ fn applyPATIndex(entry: *PageEntry, vflags: virtual.Vflags, size: PageSize) void
 fn registerFrame(
     table: *[page_entries]PageEntry,
     idx: u9,
-    paddr: usize,
+    paddr: [*]align(page_size) u8,
     size: PageSize,
     vflags: virtual.Vflags,
-) void {
+) MapError!void {
     var entry: PageEntry = .{ .fields = .{
         .present = true,
         .write = vflags.writeable,
@@ -110,10 +114,10 @@ fn registerFrame(
             .@"4k" => false,
             else => true,
         },
-        .addr_hi = @intCast(paddr >> 12),
+        .addr_hi = @intCast(@intFromPtr(paddr) >> 12),
         .exec_disable = false,
     } };
-    applyPATIndex(&entry, vflags, size);
+    try applyPATIndex(&entry, vflags, size);
     table[idx] = entry;
 }
 
@@ -121,38 +125,38 @@ fn registerFrame(
 // They are designed to be used when paging is first initialized.
 
 fn mapPageInit(
-    pml4: *[page_entries]PageEntry,
+    pml4: *align(page_size) [page_entries]PageEntry,
     vaddr: Vaddr,
-    paddr: usize,
+    paddr: [*]align(page_size) u8,
     size: PageSize,
     vflags: virtual.Vflags,
-) pmm.PMMError!void {
+) MapError!void {
     try resolveTable(pml4, vaddr.components.pml4, null);
     const ptr_table: *[page_entries]PageEntry = @ptrFromInt(pml4[vaddr.components.pml4].fields.addr_hi << 12);
     if (size == .@"1g") {
-        registerFrame(ptr_table, vaddr.components.directory_ptr, paddr, size, vflags);
+        try registerFrame(ptr_table, vaddr.components.directory_ptr, paddr, size, vflags);
         return;
     }
     try resolveTable(ptr_table, vaddr.components.directory_ptr, null);
     const directory: *[page_entries]PageEntry = @ptrFromInt(ptr_table[vaddr.components.directory_ptr].fields.addr_hi << 12);
     if (size == .@"2m") {
-        registerFrame(directory, vaddr.components.directory, paddr, size, vflags);
+        try registerFrame(directory, vaddr.components.directory, paddr, size, vflags);
         return;
     }
     try resolveTable(directory, vaddr.components.directory, null);
     const table: *[page_entries]PageEntry = @ptrFromInt(directory[vaddr.components.directory].fields.addr_hi << 12);
-    registerFrame(table, vaddr.components.table, paddr, size, vflags);
+    try registerFrame(table, vaddr.components.table, paddr, size, vflags);
 }
 
-fn mapRegionInit(pml4: *[page_entries]PageEntry, vr: *virtual.Vregion) pmm.PMMError!void {
+fn mapRegionInit(pml4: *[page_entries]PageEntry, vr: *virtual.Vregion) pmm.AllocError!void {
     const vflags: virtual.Vflags = vr.flags;
-    var vaddr: usize = vr.vaddr;
-    var paddr: usize = vr.paddr;
+    var vaddr: [*]allowzero align(page_size) u8 = vr.vaddr;
+    var paddr: [*]allowzero align(page_size) u8 = vr.paddr;
     var remaining: usize = vr.pg_cnt * page_size;
     var inc: usize = 0;
     while (true) {
-        vaddr += inc;
-        paddr += inc;
+        vaddr += @ptrCast(inc);
+        paddr += @ptrCast(inc);
         remaining -= inc;
         if (remaining == 0) {
             break;
@@ -171,17 +175,17 @@ fn mapRegionInit(pml4: *[page_entries]PageEntry, vr: *virtual.Vregion) pmm.PMMEr
 var first_region: ?*virtual.Vregion = null;
 
 pub fn mapPage(
-    addr: usize,
-    paddr: usize,
+    addr: [*]align(page_size) u8,
+    paddr: [*]align(page_size) u8,
     size: PageSize,
     vflags: virtual.Vflags,
-) pmm.PMMError!void {
+) MapError!void {
     asm volatile ("invlpg (%[addr])"
         :: [addr] "r" (addr),
         : .{ .memory = true, }
     );
-    const vaddr: Vaddr = .{ .addr = addr };
-    const pml4: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
+    const vaddr: Vaddr = .{ .addr = @intFromPtr(addr) };
+    const pml4: *align(page_size) [page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
             .pml4 = maxInt(u9),
@@ -191,7 +195,7 @@ pub fn mapPage(
             .offset = 0,
         },
     }).addr);
-    const ptr_table: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
+    const ptr_table: *align(page_size) [page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
             .pml4 = maxInt(u9),
@@ -203,10 +207,10 @@ pub fn mapPage(
     }).addr);
     try resolveTable(pml4, vaddr.components.pml4, ptr_table);
     if (size == .@"1g") {
-        registerFrame(ptr_table, vaddr.components.directory_ptr, paddr, size, vflags);
+        try registerFrame(ptr_table, vaddr.components.directory_ptr, paddr, size, vflags);
         return;
     }
-    const directory: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
+    const directory: *align(page_size) [page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
             .pml4 = maxInt(u9),
@@ -218,10 +222,10 @@ pub fn mapPage(
     }).addr);
     try resolveTable(ptr_table, vaddr.components.directory_ptr, directory);
     if (size == .@"2m") {
-        registerFrame(directory, vaddr.components.directory, paddr, size, vflags);
+        try registerFrame(directory, vaddr.components.directory, paddr, size, vflags);
         return;
     }
-    const table: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
+    const table: *align(page_size) [page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
             .pml4 = maxInt(u9),
@@ -232,13 +236,13 @@ pub fn mapPage(
         },
     }).addr);
     try resolveTable(directory, vaddr.components.directory, table);
-    registerFrame(table, vaddr.components.table, paddr, size, vflags);
+    try registerFrame(table, vaddr.components.table, paddr, size, vflags);
 }
 
-pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
+pub fn mapRegion(vr: *const virtual.Vregion) MapError!void {
     const vflags: virtual.Vflags = vr.flags;
-    var vaddr: usize = vr.vaddr;
-    var paddr: usize = vr.paddr;
+    var vaddr: [*]align(page_size) u8 = vr.vaddr;
+    var paddr: [*]align(page_size) u8 = vr.paddr;
     var remaining: usize = vr.pg_cnt * page_size;
     var inc: usize = 0;
     while (true) {
@@ -248,7 +252,8 @@ pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
         if (remaining == 0) {
             break;
         }
-        if (cpuid.cpu_extended_info.?.pdpe1gb and remaining >= @intFromEnum(PageSize.@"1g") and (paddr % @intFromEnum(PageSize.@"1g")) == 0 and (vaddr % @intFromEnum(PageSize.@"1g")) == 0) {
+        const cpuid_info = try cpuid.mod.data(cpuid.Info);
+        if (cpuid_info.extended_info.pdpe1gb and remaining >= @intFromEnum(PageSize.@"1g") and (paddr % @intFromEnum(PageSize.@"1g")) == 0 and (vaddr % @intFromEnum(PageSize.@"1g")) == 0) {
             try mapPage(vaddr, paddr, PageSize.@"1g", vflags);
             inc = @intFromEnum(PageSize.@"1g");
             continue;
@@ -263,8 +268,8 @@ pub fn mapRegion(vr: *const virtual.Vregion) pmm.PMMError!void {
     }
 }
 
-pub fn getPageStatus(addr: usize) bool {
-    const vaddr: Vaddr = .{ .addr = addr };
+pub fn getPageStatus(addr: [*]align(page_size) u8) bool {
+    const vaddr: Vaddr = .{ .addr = @ptrFromInt(addr) };
     const ptr_table: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
@@ -319,12 +324,12 @@ pub fn registerRegion(vr: *virtual.Vregion) void {
     first_region = vr;
 }
 
-fn init() modules.ModuleInitError!void {
-    const pml2: *[page_entries]PageEntry = @ptrFromInt(pmm.pmmAlloc(page_size) catch return error.ModuleInitFailure);
+pub fn init() pmm.AllocError!void {
+    const pml2: *align(page_size) [page_entries]PageEntry = @ptrCast(try pmm.pmmAlloc(page_size));
     @memset(pml2, .{ .int = 0 });
     var region = first_region;
     while (region) |vr| {
-        mapRegionInit(pml2, vr) catch return error.ModuleInitFailure;
+        try mapRegionInit(pml2, vr);
         region = vr.next;
     }
     pml2[pml2.len - 1] = .{
@@ -347,20 +352,9 @@ fn init() modules.ModuleInitError!void {
     // 0x05 = WriteProtect
     // 0x06 = Writeback
     // 0x07 = Uncached
-    if (msr.mod.inited) {
-        msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00);
-    }
+    msr.setMSR(pat_msr, 0x00_01_04_05_06_07_00_00) catch {};
     asm volatile ("mov %[pml2], %%cr3"
         :: [pml2] "r" (pml2),
         : .{ .memory = true }
     );
 }
-
-/// The paging module, which initializes paging structures and enables paging
-/// on an x86_64 system.
-pub var mod: modules.Module = .{
-    .name = "paging",
-    .init = init,
-    .deps = &.{ &pmm.mod, &elf.mod },
-    .deps_opt = &.{ &msr.mod },
-};

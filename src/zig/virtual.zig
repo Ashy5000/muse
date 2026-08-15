@@ -20,39 +20,52 @@ pub const Vflags = struct {
 };
 
 pub const Vregion = struct {
-    vaddr: usize,
-    paddr: usize,
+    vaddr: [*]allowzero align(paging.page_size) u8,
+    paddr: [*]allowzero align(paging.page_size) u8,
     pg_cnt: usize,
     next: ?*Vregion = null,
     flags: Vflags = .{},
 };
 
-pub fn backSlice(s: []u8) pmm.PMMError!void {
+pub const BackError = pmm.AllocError || paging.MapError;
+
+pub fn backSlice(s: []u8) BackError!void {
     const start: usize = @intFromPtr(s.ptr);
     var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
     while (addr < start + s.len) : (addr += paging.page_size) {
-        if (!paging.getPageStatus(addr)) {
-            try paging.mapPage(addr, try pmm.pmmAlloc(paging.page_size), .@"4k", .{});
+        if (!paging.getPageStatus(@ptrFromInt(addr))) {
+            try paging.mapPage(
+                @ptrFromInt(addr),
+                try pmm.pmmAlloc(paging.page_size),
+                .@"4k",
+                .{},
+            );
         }
     }
 }
 
-pub const MapError = frames.FrameAllocError || pmm.PMMError;
+pub const MapError = frames.FrameAllocError || paging.MapError;
 
 pub fn mapPhysObj(s: []u8, flags: Vflags) MapError![]u8 {
-    const phys_start: usize = std.mem.Alignment.backward(paging.page_align, @intFromPtr(s.ptr));
-    const phys_end: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(s.ptr) + s.len);
+    const phys_start: usize = std.mem.Alignment.backward(
+        paging.page_align,
+        @intFromPtr(s.ptr),
+    );
+    const phys_end: usize = std.mem.Alignment.forward(
+        paging.page_align,
+        @intFromPtr(s.ptr) + s.len,
+    );
     const pg_cnt: usize = (phys_end - phys_start) / paging.page_size;
-    const virt_start: usize = @intFromPtr((try frames.frameAllocContig(pg_cnt)).ptr);
+    const virt_start = (try frames.frameAllocContig(pg_cnt)).ptr;
     const region: Vregion = .{
         .vaddr = virt_start,
-        .paddr = phys_start,
+        .paddr = @ptrFromInt(phys_start),
         .pg_cnt = pg_cnt,
         .flags = flags,
     };
     try paging.mapRegion(&region);
     const offset = @intFromPtr(s.ptr) - phys_start;
-    const res_ptr: [*]u8 = @ptrFromInt(virt_start + offset);
+    const res_ptr: [*]u8 = virt_start + offset;
     return res_ptr[0..s.len];
 }
 

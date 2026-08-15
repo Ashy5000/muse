@@ -1,64 +1,30 @@
 const std = @import("std");
 const console = @import("console.zig");
 
-pub const ModuleInitError = error{
-    ModuleInitFailure,
-    ModuleUnsupported,
-    ModuleMissingConfig,
+pub const InitError = error{
+    InitializationFailure,
+    CriticalSystemFailure,
+    Unsupported,
 };
 
 fn initEmpty() !void {}
 
 pub const Module = struct {
     name: []const u8,
-    inited: bool = false,
-    visited: bool = false,
-    err: ?ModuleInitError = null,
-    deps: []const *Module = @as([0]*Module, .{})[0..],
-    deps_opt: []const *Module = @as([0]*Module, .{})[0..],
-    init: *const fn () ModuleInitError!void = initEmpty,
+    payload: ?*anyopaque = null,
+    err: ?InitError = null,
+    init: *const fn () InitError!void = initEmpty,
+
+    pub fn data(self: *Module, res_type: type) InitError!*res_type {
+        if (self.err) |err| {
+            return err;
+        }
+        return if (self.payload) |res| @alignCast(@ptrCast(res)) else new: {
+            self.init() catch |err| {
+                self.err = err;
+                return err;
+            };
+            break :new @alignCast(@ptrCast(self.payload.?));
+        };
+    }
 };
-
-var depth: u32 = 0;
-
-pub fn loadModule(m: *Module) ModuleInitError!void {
-    if (m.err) |err| {
-        return err;
-    }
-    if (m.inited) {
-        return;
-    }
-    if (m.visited) {
-        std.debug.panic("dependency loop", .{});
-    }
-    m.visited = true;
-    for (0..depth) |_| {
-        console.print(" |", .{});
-    }
-    console.print("\\`{s}`\n", .{m.name});
-    for (m.deps) |module| {
-        depth += 1;
-        try loadModule(module);
-        depth -= 1;
-    }
-    for (m.deps_opt) |module| {
-        depth += 1;
-        loadModule(module) catch {};
-        depth -= 1;
-    }
-    m.init() catch |err| {
-        for (0..depth) |_| {
-            console.print(" |", .{});
-        }
-        console.print("ERROR: {s}\n", .{@errorName(err)});
-        m.err = err;
-        return err;
-    };
-    m.inited = true;
-    if (m.deps.len > 0) {
-        for (0..depth) |_| {
-            console.print(" |", .{});
-        }
-        console.print("/\n", .{});
-    }
-}

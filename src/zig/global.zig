@@ -1,6 +1,7 @@
 const pmm = @import("alloc/pmm.zig");
 const modules = @import("modules.zig");
 const bitmaps = @import("utils/bitmaps.zig");
+const paging = @import("arch.zig").paging;
 
 pub const Region = struct {
     start: usize,
@@ -14,7 +15,7 @@ pub const CoreInfo = struct {
     size: usize,
 };
 
-pub var info: *allowzero CoreInfo = @ptrFromInt(0);
+pub var info: *allowzero align(paging.page_size) CoreInfo = @ptrFromInt(0);
 
 fn init() modules.ModuleInitError!void {
     info.size = @sizeOf(CoreInfo);

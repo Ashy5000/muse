@@ -95,7 +95,6 @@ fn hpet_tick() callconv(idt.int_callconv) void {
     }
     tick.tick();
     lapic.eoi();
-    asm volatile ("sti");
 }
 
 fn init() timer.Driver.InitError!bool {
@@ -123,7 +122,7 @@ fn init() timer.Driver.InitError!bool {
         sys_timer = &registers.timers[0];
     }
     console.print("Found HPET with period 0x{x}.\n", .{driver_timer.period});
-    const vec = interrupts.alloc(@ptrCast(&hpet_tick)) orelse return error.IDTFull;
+    const vec = try interrupts.alloc(hpet_tick) orelse return error.IDTFull;
     console.print("{}", .{sys_timer.?.info.ioapic_routing_map});
     const irq = ioapic.alloc(
         sys_timer.?.info.ioapic_routing_map,

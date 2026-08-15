@@ -1,9 +1,12 @@
 const modules = @import("modules.zig");
-const console = @import("console.zig");
 
-pub var cpu_vendor_id: ?[12]u8 = null;
+pub const Info = struct {
+    vendor_id: [12]u8,
+    features: CPUFeatures,
+    extended_info: CPUExtendedInfo,
+};
 
-fn getCPUVendorID() void {
+fn getCPUVendorID() [12]u8 {
     var fst: u32 = undefined;
     var snd: u32 = undefined;
     var lst: u32 = undefined;
@@ -16,7 +19,7 @@ fn getCPUVendorID() void {
         :: .{ .eax = true }
     );
     const res_32: [3]u32 = .{ fst, snd, lst };
-    cpu_vendor_id = @bitCast(res_32);
+    return @bitCast(res_32);
 }
 
 pub const CPUFeatures = packed struct {
@@ -93,9 +96,7 @@ pub const CPUFeatures = packed struct {
     pbe: bool,
 };
 
-pub var cpu_features: ?CPUFeatures = null;
-
-fn getCPUFeatures() void {
+fn getCPUFeatures() CPUFeatures {
     var ebx: u32 = undefined;
     var ecx: u32 = undefined;
     var edx: u32 = undefined;
@@ -108,7 +109,7 @@ fn getCPUFeatures() void {
         :: .{ .eax = true }
     );
     const concat: [3]u32 = .{ ebx, ecx, edx };
-    cpu_features = @bitCast(concat);
+    return @bitCast(concat);
 }
 
 pub const CPUExtendedInfo = packed struct {
@@ -180,9 +181,7 @@ pub const CPUExtendedInfo = packed struct {
     @"3dnow": bool,
 };
 
-pub var cpu_extended_info: ?CPUExtendedInfo = null;
-
-fn getCPUExtendedInfo() void {
+fn getCPUExtendedInfo() CPUExtendedInfo {
     var ecx: u32 = undefined;
     var edx: u32 = undefined;
     asm (
@@ -193,13 +192,19 @@ fn getCPUExtendedInfo() void {
         :: .{ .eax = true }
     );
     const concat: [2]u32 = .{ ecx, edx };
-    cpu_extended_info = @bitCast(concat);
+    return @bitCast(concat);
 }
-fn init() modules.ModuleInitError!void {
-    getCPUVendorID();
-    getCPUFeatures();
-    getCPUExtendedInfo();
-    console.print("CPU vendor ID: {s}.\n", .{cpu_vendor_id.?});
+
+var info: Info = undefined;
+
+fn init() modules.InitError!void {
+    info = .{
+        .vendor_id = getCPUVendorID(),
+        .features = getCPUFeatures(),
+        .extended_info = getCPUExtendedInfo(),
+    };
+
+    mod.payload = @ptrCast(&info);
 }
 
 pub var mod: modules.Module = .{

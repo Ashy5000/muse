@@ -41,11 +41,10 @@ pub const ELFSectionHeader = extern struct {
 
 const elf_section_flag_alloc: u32 = 0x2;
 
-/// The region of memory in which the prekernel is loaded.
-pub var trampoline_region: ?virtual.Vregion = null;
+var trampoline_region: virtual.Vregion = undefined;
 
-fn init() modules.ModuleInitError!void {
-    const elf_tag = multiboot.multibootFindTag(multiboot.MultibootTagELFSections) catch return error.ModuleUnsupported;
+fn init() modules.InitError!void {
+    const elf_tag = multiboot.multibootFindTag(multiboot.MultibootTagELFSections) catch return error.Unsupported;
     var start: ?usize = null;
     var end: ?usize = null;
     var offset: usize = 0;
@@ -57,21 +56,20 @@ fn init() modules.ModuleInitError!void {
         start = @min(start orelse std.math.maxInt(usize), h.vaddr);
         end = @max(end orelse 0, h.vaddr + h.size);
     }
-    const start_res = start orelse return error.ModuleInitFailure;
-    const end_res = end orelse return error.ModuleInitFailure;
+    const start_res = start orelse return error.InitializationFailure;
+    const end_res = end orelse return error.InitializationFailure;
+    const start_ptr: [*]align(paging.page_size) u8 = @ptrFromInt(paging.page_align.forward(start_res));
     trampoline_region = .{
-        .vaddr = start_res,
-        .paddr = start_res,
+        .vaddr = start_ptr,
+        .paddr = start_ptr,
         .pg_cnt = (end_res - start_res + paging.page_size - 1) / paging.page_size,
     };
-    paging.registerRegion(&trampoline_region.?);
+    paging.registerRegion(&trampoline_region);
+    mod.payload = @ptrCast(&trampoline_region);
 }
 
 /// The elf module, which parses information about the prekernel ELF file.
 pub var mod: modules.Module = .{
     .name = "elf",
     .init = init,
-    .deps = &.{
-        &multiboot.mod,
-    },
 };

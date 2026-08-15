@@ -138,38 +138,35 @@ const vtable: std.mem.Allocator.VTable = .{
     .free = free,
 };
 
-var global_heap: ?Heap = null;
-
 /// An error that occured while creating an std.mem.Allocator.
 pub const AllocCreateError = error{
     AllocUninit,
 };
 
-/// Creates and returns an std.mem.Allocator instance that allocates memory
-/// on the kernel's heap.
-pub fn allocator() AllocCreateError!std.mem.Allocator {
-    return .{
-        .ptr = &(global_heap orelse return error.AllocUninit),
-        .vtable = &vtable,
-    };
-}
+var global_heap: Heap = undefined;
+var allocator: std.mem.Allocator = .{
+    .ptr = &global_heap,
+    .vtable = &vtable,
+};
 
-fn init() modules.ModuleInitError!void {
-    const region = elf.trampoline_region.?;
+fn init() modules.InitError!void {
+    const region = try elf.mod.data(virtual.Vregion);
     global_heap = .{
         .limit = @ptrFromInt(@intFromPtr(global.info) + global.info.size + 1),
-        .max_limit = @ptrFromInt(region.vaddr),
+        .max_limit = @ptrCast(region.vaddr),
         .size = 0,
         .free = 0,
         .tiers = @splat(null),
     };
-    const prev_size: *align(1) usize = @ptrCast(heapSbrk(&global_heap.?, @sizeOf(usize)).?);
+    const prev_size: *align(1) usize = @ptrCast(
+        heapSbrk(&global_heap, @sizeOf(usize)).?,
+    );
     prev_size.* = 0;
+    mod.payload = @ptrCast(&allocator);
 }
 
 /// The heap module, which initializes a heap for the kernel.
 pub var mod: modules.Module = .{
     .name = "heap",
     .init = init,
-    .deps = &@as([2]*modules.Module, .{ &paging.mod, &elf.mod }),
 };

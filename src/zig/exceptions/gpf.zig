@@ -9,5 +9,5 @@ fn gpf(_: *anyopaque, _: usize) callconv(idt.int_callconv) void {
 /// A descriptor for an GPF handler ISR.
 pub const isr_info: interrupts.ISRInfo = .{
     .vec = 0xD,
-    .isr = gpf,
+    .isr = @ptrCast(&gpf),
 };

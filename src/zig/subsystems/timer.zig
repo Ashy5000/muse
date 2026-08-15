@@ -13,33 +13,29 @@ pub const Driver = struct {
     pub const InitError = error{
         IDTFull,
         NoAvailableIRQs,
-    } || virtual.MapError;
+    } || virtual.MapError || modules.InitError;
 
     period: IntervalPico,
     init: *const fn () InitError!bool,
     enable: *const fn () void,
 };
 
-pub var system_timer: ?*Driver = null;
+pub const tick_period: IntervalPico = 200_000_000_000; // 200 microseconds
 
-pub const tick_period: IntervalPico = 200_000_000; // 200 microseconds
-
-fn init() modules.ModuleInitError!void {
+fn init() modules.InitError!void {
     for (drivers.drivers_timer) |t| {
-        if (t.init() catch return error.ModuleInitFailure) {
-            system_timer = t;
+        if (t.init() catch return error.InitializationFailure) {
+            mod.payload = @ptrCast(t);
             t.period = tick_period;
             t.enable();
             return;
         }
     }
-    return error.ModuleUnsupported;
+    return error.Unsupported;
 }
 
 /// The display module, which initializes the subsystem for video output.
 pub var mod: modules.Module = .{
     .name = "timer",
     .init = init,
-    // TODO: Do this dynamically
-    .deps = &.{ &acpi.mod, &virtual.mod, &lapic.mod, &ioapic.mod },
 };

@@ -10,22 +10,18 @@ const Console = struct {
     y: usize,
 };
 
-var console: ?Console = null;
-
-const ConsolePrintError = error{
-    ConsoleUninit,
-} || psf.PSFDrawError;
-
-fn maybeScroll(cons: *Console) ConsolePrintError!void {
-    if (cons.y < cons.d.height / psf.font.?.glyph_height) {
+fn maybeScroll(cons: *Console) display.DrawError!void {
+    if (cons.y < cons.d.height / psf.font.glyph_height) {
         return;
     }
     cons.y -= 1;
-    try cons.d.scrollGrid(psf.font.?.glyph_height);
+    try cons.d.scrollGrid(psf.font.glyph_height);
 }
 
-fn printChar(char: u8) ConsolePrintError!void {
-    var cons = &(console orelse return error.ConsoleUninit);
+const PrintError = display.DrawError || modules.InitError;
+
+fn printChar(char: u8) PrintError!void {
+    var cons = try mod.data(Console);
     io.out(8, 0xe9, char);
     if (char == '\n') {
         cons.x = 0;
@@ -35,7 +31,7 @@ fn printChar(char: u8) ConsolePrintError!void {
     }
     try psf.put_char(cons.d, char, cons.x, cons.y, 0xFFFFFF);
     cons.x += 1;
-    if (cons.x == cons.d.width / psf.font.?.glyph_width) {
+    if (cons.x == cons.d.width / psf.font.glyph_width) {
         cons.x = 0;
         cons.y += 1;
         try maybeScroll(cons);
@@ -103,17 +99,22 @@ pub fn hexdump(data: []const u8) void {
     }
 }
 
-fn init() modules.ModuleInitError!void {
-    console = .{
+const heap = @import("alloc/heap.zig");
+
+fn init() modules.InitError!void {
+    const console = (try heap.mod.data(std.mem.Allocator)).create(
+        Console,
+    ) catch return error.CriticalSystemFailure;
+    console.* = .{
         .d = display.display_primary.?,
         .x = 0,
         .y = 0,
     };
+    mod.payload = @ptrCast(console);
 }
 
 /// The console module, which initializes the system console.
 pub var mod: modules.Module = .{
     .name = "console",
-    .deps = &.{ &psf.mod, &display.mod },
     .init = init,
 };

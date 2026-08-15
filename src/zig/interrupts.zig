@@ -1,9 +1,8 @@
 const std = @import("std");
 const idt = @import("arch.zig").idt;
-const console = @import("console.zig");
 const modules = @import("modules.zig");
 
-pub const ISR = *const fn (*anyopaque, usize) callconv(idt.int_callconv) void;
+pub const ISR = *const fn () callconv(idt.int_callconv) void;
 
 pub const ISRInfo = struct {
     vec: Vec,
@@ -15,15 +14,14 @@ const exceptions: [2]*const ISRInfo = .{
     &@import("exceptions/page_fault.zig").isr_info,
 };
 
-var idt_bitmap: u256 = 0xffffffff; // Reserve exception vectors
+pub const Vec = std.math.Log2Int(u256);
 
-pub const Vec = std.math.Log2Int(@TypeOf(idt_bitmap));
-
-pub fn alloc(isr: ISR) ?Vec {
-    for (0..@bitSizeOf(@TypeOf(idt_bitmap))) |i| {
+pub fn alloc(isr: ISR) modules.InitError!?Vec {
+    const bitmap = try mod.data(u256);
+    for (0..256) |i| {
         const vec: Vec = @intCast(i);
-        if ((idt_bitmap >> vec) & 0x1 == 0) {
-            idt_bitmap |= @as(@TypeOf(idt_bitmap), 1) << vec;
+        if ((bitmap.* >> vec) & 0x1 == 0) {
+            bitmap.* |= @as(u256, 1) << vec;
             idt.loadISR(.{
                 .vec = vec,
                 .isr = isr,
@@ -34,15 +32,19 @@ pub fn alloc(isr: ISR) ?Vec {
     return null;
 }
 
-fn init() modules.ModuleInitError!void {
+const heap = @import("alloc/heap.zig");
+
+fn init() modules.InitError!void {
     for (exceptions) |info| {
         idt.loadISR(info.*);
     }
     asm volatile ("sti");
+    mod.payload = (try heap.mod.data(std.mem.Allocator)).create(
+        u256,
+    ) catch return error.CriticalSystemFailure;
 }
 
 pub var mod: modules.Module = .{
     .name = "interrupts",
     .init = init,
-    .deps = &.{&idt.mod},
 };

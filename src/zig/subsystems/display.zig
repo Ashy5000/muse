@@ -7,7 +7,7 @@ const drivers = @import("../drivers.zig");
 pub const Color = u24;
 
 /// An error produced while drawing to a display.
-pub const DisplayDrawError = vga.VGADrawError;
+pub const DrawError = vga.VGADrawError;
 
 /// A display output that supports initialization, pixel plotting, and
 /// scrolling.
@@ -15,8 +15,8 @@ pub const Driver = struct {
     width: usize,
     height: usize,
     init: *const fn () bool,
-    putPixel: *const fn (x: usize, y: usize, c: Color) DisplayDrawError!void,
-    scrollGrid: *const fn (inc: usize) DisplayDrawError!void,
+    putPixel: *const fn (x: usize, y: usize, c: Color) DrawError!void,
+    scrollGrid: *const fn (inc: usize) DrawError!void,
 };
 
 /// The primary system display, used for the system console.

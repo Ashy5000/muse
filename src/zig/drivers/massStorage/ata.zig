@@ -9,6 +9,7 @@ const cpu = @import("../../smp/cpu.zig");
 const pmm = @import("../../alloc/pmm.zig");
 const paging = @import("../../arch.zig").paging;
 const virtual = @import("../../virtual.zig");
+const pic = @import("../../drivers/pic.zig");
 
 const RegisterMain = enum(io.Port) {
     data,
@@ -144,9 +145,9 @@ fn init_channel(
         secondary,
     },
 ) virtual.MapError!void {
-    const prdt_phys: u32 = try pmm.pmmAllocLow(prdt_size);
+    const prdt_phys: [*]align(paging.page_size) u8 = try pmm.pmmAllocLow(prdt_size);
     const prdt_virt: []PRD = @ptrCast(@alignCast(try virtual.mapPhysObj(
-        @as([*]u8, @ptrFromInt(prdt_phys))[0..prdt_size],
+        prdt_phys[0..prdt_size],
         .{},
     )));
     @memset(prdt_virt, .{
@@ -364,6 +365,7 @@ fn do_dma(
     dir: TransferDir,
     lba_p: u48,
 ) virtual.MapError!void {
+    channel.int_flag = false;
     var data = data_p;
     var lba = lba_p;
     while (data.len > 0) {
@@ -389,7 +391,9 @@ fn do_dma(
 var channel_primary: ?Channel = null;
 var channel_secondary: ?Channel = null;
 
-fn isr_primary() void {
+const idt = @import("../../arch.zig").idt;
+
+fn isr_primary() callconv(idt.int_callconv) void {
     @atomicStore(
         bool,
         &(channel_primary orelse return).int_flag,
@@ -398,7 +402,7 @@ fn isr_primary() void {
     );
 }
 
-fn isr_secondary() void {
+fn isr_secondary() callconv(idt.int_callconv) void {
     @atomicStore(
         bool,
         &(channel_secondary orelse return).int_flag,
@@ -417,7 +421,7 @@ fn init(dev: *pci.PCIDev) void {
         rsvd: u3,
         bus_master: bool,
     };
-    const busmaster_reg: pci.PCIDev.BAR = reg: for (dev.bars.?) |bar| {
+    const busmaster_reg: pci.PCIDev.BARRaw = reg: for (dev.bars.?) |bar| {
         if (bar.idx == 4) {
             break :reg bar;
         }
@@ -427,7 +431,7 @@ fn init(dev: *pci.PCIDev) void {
     const prog_if: ATAProgIf = @bitCast(dev.class.prog_if);
     _ = init: {
         if (!prog_if.primary_pci) {
-            const vec_primary = interrupts.alloc(@ptrCast(&isr_primary)) orelse return; // TODO: fall back to polling
+            const vec_primary = (interrupts.alloc(isr_primary) catch |err| break :init err) orelse return; // TODO: fall back to polling
             if (ioapic.alloc(
                 1 << 14,
                 vec_primary,
@@ -438,13 +442,13 @@ fn init(dev: *pci.PCIDev) void {
                 _ = init_channel(
                     0x1f0,
                     0x3f6,
-                    busmaster_reg,
+                    busmaster_reg.enhance(8) catch |err| break :init err,
                     .primary,
                 ) catch |err| break :init err;
             }
         }
         if (!prog_if.secondary_pci) {
-            const vec_secondary = interrupts.alloc(@ptrCast(&isr_secondary)) orelse return; // TODO: fall back to polling
+            const vec_secondary = (interrupts.alloc(isr_primary) catch |err| break :init err) orelse return; // TODO: fall back to polling
             if (ioapic.alloc(
                 1 << 15,
                 vec_secondary,
@@ -452,21 +456,23 @@ fn init(dev: *pci.PCIDev) void {
                 .edge_sensitive,
                 cpu.getActiveCPU().*,
             )) |_| {
-                const busmaster_secondary: pci.PCIDev.BAR = .{
+                const busmaster_secondary: pci.PCIDev.BARRaw = .{
                     .idx = busmaster_reg.idx,
                     .data = switch (busmaster_reg.data) {
-                        .io => |data_io| .{ .io = .{ .port = data_io.port + 0x8 } },
+                        .io => |data_io| .{
+                            .io = .{ .port = data_io.port + 0x8 },
+                        },
                         .mem => |data_mem| .{ .mem = .{
-                            .addr = data_mem.addr + 0x8,
+                            .paddr = data_mem.paddr + 0x8,
                             .prefetchable = data_mem.prefetchable,
-                            .bar_mem_type = data_mem.bar_mem_type,
+                            .mem_type = data_mem.mem_type,
                         } },
                     },
                 };
                 _ = init_channel(
                     0x170,
                     0x376,
-                    busmaster_secondary,
+                    busmaster_secondary.enhance(8) catch |err| break :init err,
                     .primary,
                 ) catch |err| break :init err;
             }

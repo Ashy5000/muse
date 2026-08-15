@@ -21,6 +21,10 @@ pub fn in(comptime bits: u16, port: Port) @Int(.unsigned, bits) {
     };
 }
 
+pub fn wait() void {
+    out(8, 0x80, 0);
+}
+
 fn out8(port: Port, data: u8) void {
     asm volatile (
         \\ outb %%al, (%%dx)

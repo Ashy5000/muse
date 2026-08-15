@@ -63,6 +63,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/zig/trampoline.zig"),
         .target = target,
         .optimize = optimize,
+        .red_zone = false,
         // .code_model = .kernel,
     });
     mod.addAssemblyFile(info.bootstrap_asm);
@@ -72,7 +73,9 @@ pub fn build(b: *std.Build) !void {
         "font_path",
         "path to a PSF console font",
     ) orelse "font.psf";
-    mod.addAnonymousImport("font", .{ .root_source_file = b.graph.cwdRelativePath(font_path) });
+    mod.addAnonymousImport("font", .{
+        .root_source_file = b.graph.cwdRelativePath(font_path),
+    });
 
     const exe = b.addExecutable(.{
         .name = "muse_trampoline",
@@ -85,12 +88,22 @@ pub fn build(b: *std.Build) !void {
     const wf = b.addWriteFiles();
     const efi = wf.add(info.efi, &.{});
 
-    const grub_step = b.addSystemCommand(&.{"grub-mkstandalone"});
-    grub_step.addArgs(&.{
-        // "-d",
-        // info.grub_path,
-        "-O",
-    });
+    const grub_dir = b.option(
+        []const u8,
+        "grub_path",
+        "Path to a grub build directory",
+    );
+    const grub_step = b.addSystemCommand(&.{if (grub_dir) |dir|
+        try std.mem.concat(b.allocator, u8, &.{ dir, "/grub-mkstandalone" })
+    else
+        "grub-mkstandalone"});
+    if (grub_dir) |dir| {
+        grub_step.addArgs(&.{
+            "-d",
+            try std.mem.concat(b.allocator, u8, &.{ dir, "/grub-core/" }),
+        });
+    }
+    grub_step.addArg("-O");
     grub_step.addArg(info.grub_arch);
     grub_step.addArg("-o");
     grub_step.addFileArg(efi);
@@ -178,9 +191,11 @@ pub fn build(b: *std.Build) !void {
 
     const qemu_step = b.addSystemCommand(&.{info.vm});
     qemu_step.addArgs(&.{
+        "-device",
+        "nvme,serial=deadbeef,drive=nvm",
         "-drive",
     });
-    qemu_step.addPrefixedFileArg("format=raw,file=", disk);
+    qemu_step.addPrefixedFileArg("format=raw,id=nvm,if=none,file=", disk);
     qemu_step.addArg("-drive");
 
     const firmware_path = b.option(
@@ -203,7 +218,7 @@ pub fn build(b: *std.Build) !void {
         // "-debugcon",
         // "stdio",
         "-d",
-        "trace:ide*",
+        "int,trace:ide*",
         "-smp",
         "2",
     });

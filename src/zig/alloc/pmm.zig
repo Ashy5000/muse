@@ -12,15 +12,8 @@ const max_chunk_size: usize = 512 * 1024; // 512K
 const max_chunk_size_log: usize = std.math.log2_int(usize, max_chunk_size);
 pub const tier_cnt: usize = max_chunk_size_log - min_chunk_size_log + 1;
 
-/// An error which occurred while allocating or setting the status of physical
-/// pages.
-pub const PMMError = error{
-    PMMNoMem,
-    PMMUninit,
-};
-
 fn setStatusWithinRegion(
-    region: global.Region,
+    region: *allowzero global.Region,
     addr: usize,
     size: usize,
     status: bool,
@@ -63,62 +56,87 @@ fn setStatusWithinRegion(
     }
 }
 
-fn pmmAllocInRegion(req_size: usize, region: global.Region) PMMError!usize {
-    const size = std.mem.Alignment.forward(std.mem.Alignment.fromByteUnits(min_chunk_size), req_size);
+pub const AllocError = error{NoPhysMem};
+
+fn pmmAllocInRegion(
+    req_size: usize,
+    region: *allowzero global.Region,
+) AllocError![*]align(paging.page_size) u8 {
+    const size = std.mem.Alignment.forward(
+        std.mem.Alignment.fromByteUnits(min_chunk_size),
+        req_size,
+    );
     const tier_idx = std.math.log2_int_ceil(usize, size) - min_chunk_size_log;
-    const tiers = region.bitmaps orelse return error.PMMUninit;
-    const idx = bitmaps.bitmapFind(tiers[tier_idx]) orelse return error.PMMNoMem;
-    const addr: usize = region.start + idx * (min_chunk_size << @intCast(tier_idx));
+    const tiers = region.bitmaps orelse uninit: {
+        init();
+        break :uninit region.bitmaps.?;
+    };
+    const idx = bitmaps.bitmapFind(
+        tiers[tier_idx],
+    ) orelse return error.NoPhysMem;
+    const addr: usize = region.start + idx * (min_chunk_size << @intCast(
+        tier_idx,
+    ));
     setStatusWithinRegion(region, addr, size, true);
-    return addr;
+    return @ptrFromInt(addr);
 }
 
 /// Allocates a region of physical memory with a given size and returns its
 /// physical address, guarenteed to be aligned to its size rounded up to the
 /// next power of 2.
-pub fn pmmAlloc(req_size: usize) PMMError!usize {
-    for (global.info.regions) |region| {
+pub fn pmmAlloc(req_size: usize) AllocError![*]align(paging.page_size) u8 {
+    if (!inited) {
+        init();
+    }
+    for (&global.info.regions) |*region| {
         if (region.start < 0xffffffff) {
             continue;
         }
-        return pmmAllocInRegion(req_size, region) catch |err| switch (err) {
-            error.PMMNoMem => continue,
-            else => return err,
-        };
+        return pmmAllocInRegion(req_size, region) catch continue;
     }
-    for (global.info.regions) |region| {
+    for (&global.info.regions) |*region| {
         if (region.start >= 0xffffffff) {
             continue;
         }
-        return pmmAllocInRegion(req_size, region) catch |err| switch (err) {
-            error.PMMNoMem => continue,
-            else => return err,
-        };
+        return pmmAllocInRegion(req_size, region) catch continue;
     }
-    return error.PMMNoMem;
+    return error.NoPhysMem;
 }
 
-pub fn pmmAllocLow(req_size: usize) PMMError!u32 {
-    for (global.info.regions) |region| {
-        if (region.start + region.pg_cnt * paging.page_size > 0xffffffff) {
-            continue; // TODO: Send pmmAllocInRegion a truncated region
-        }
-        return @intCast(pmmAllocInRegion(req_size, region) catch |err| switch (err) {
-            error.PMMNoMem => continue,
-            else => return err,
-        });
+pub fn pmmAllocLow(req_size: usize) AllocError![*]align(paging.page_size) u8 {
+    if (!inited) {
+        init();
     }
-    return error.PMMNoMem;
+    for (global.info.regions) |region| {
+        if (region.start > 0xffffffff) {
+            continue;
+        }
+        const region_trunc: global.Region = .{
+            .start = region.start,
+            .pg_cnt = @min(
+                region.pg_cnt,
+                (0xffffffff - region.start) / paging.page_size,
+            ),
+            .bitmaps = region.bitmaps,
+        };
+        return pmmAllocInRegion(req_size, &region_trunc) catch continue;
+    }
+    return error.NoPhysMem;
 }
+
+pub const StatusError = error{InvalidAddress};
 
 /// If `status` is true, sets the status of the physical page at physical
 /// address `addr` as in use. Otherwise, frees the physical page at the
 /// address. If the status of the page is equal to the requested status,
 /// no error is returned. This means that double-frees do not produce an error.
-pub fn pmmSetStatus(addr: usize, req_size: usize, status: bool) PMMError!void {
-    const size = std.mem.Alignment.forward(std.mem.Alignment.fromByteUnits(min_chunk_size), req_size);
+pub fn pmmSetStatus(addr: usize, req_size: usize, status: bool) StatusError!void {
+    const size = std.mem.Alignment.forward(
+        std.mem.Alignment.fromByteUnits(min_chunk_size),
+        req_size,
+    );
     for (0..global.info.region_cnt) |i| {
-        const vr: global.Region = global.info.regions[i];
+        const vr: *global.Region = &global.info.regions[i];
         const start: usize = vr.start;
         const end: usize = start + vr.pg_cnt * paging.page_size;
         if (addr >= start and addr < end) {
@@ -126,7 +144,7 @@ pub fn pmmSetStatus(addr: usize, req_size: usize, status: bool) PMMError!void {
             return;
         }
     }
-    return error.PMMNoMem;
+    return error.InvalidAddress;
 }
 
 // "Resource deallocation must succeed."
@@ -135,9 +153,11 @@ pub fn pmmFree(addr: usize, size: usize) void {
     pmmSetStatus(addr, size, false) catch return;
 }
 
-var global_vr: ?virtual.Vregion = null;
+var global_vr: virtual.Vregion = undefined;
 
-fn init() modules.ModuleInitError!void {
+var inited = false;
+
+fn init() void {
     for (0..global.info.region_cnt) |i| {
         var region = &global.info.regions[i];
         var tiers: [tier_cnt][]bitmaps.BitmapUnit = undefined;
@@ -165,17 +185,11 @@ fn init() modules.ModuleInitError!void {
         region.bitmaps = tiers;
     }
     global_vr = .{
-        .vaddr = @intFromPtr(global.info),
-        .paddr = @intFromPtr(global.info),
+        .vaddr = @ptrCast(global.info),
+        .paddr = @ptrCast(global.info),
         .pg_cnt = (global.info.size + paging.page_size - 1) / paging.page_size,
     };
-    paging.registerRegion(&global_vr.?);
-    pmmSetStatus(@intFromPtr(global.info), global.info.size, true) catch return error.ModuleInitFailure;
+    paging.registerRegion(&global_vr);
+    pmmSetStatus(@intFromPtr(global.info), global.info.size, true) catch unreachable;
+    inited = true;
 }
-
-/// The pmm module, which initializes a physical memory page frame allocator.
-pub var mod: modules.Module = .{
-    .name = "pmm",
-    .init = init,
-    .deps = @as([2]*modules.Module, .{ &mmap.mod, &global.mod })[0..],
-};

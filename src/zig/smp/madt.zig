@@ -87,7 +87,7 @@ pub fn findMADTEntries(
     }
     const entry_type = struct_info.field_attrs[0].defaultValue(field_type);
 
-    const madt = try mod.data(*MADT);
+    const madt = try mod.data();
     var entry: *const MADTEntry = &madt.first_entry;
     var entries = std.ArrayList(*align(1) const res_type).empty;
     while (@intFromPtr(entry) < @intFromPtr(madt) + madt.header.length) {
@@ -99,8 +99,8 @@ pub fn findMADTEntries(
     return entries;
 }
 
-fn init() modules.InitError!void {
-    mod.payload = @ptrCast(
+fn init() modules.InitError!*MADT {
+    return @ptrCast(
         try acpi.findSDT("APIC") orelse return error.Unsupported,
     );
 }
@@ -118,7 +118,7 @@ pub fn redirectionInfo(legacy_irq: u8, gpa: std.mem.Allocator) MADTError!?u32 {
     return null;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(*MADT) = .{
     .name = "madt",
     .init = init,
 };

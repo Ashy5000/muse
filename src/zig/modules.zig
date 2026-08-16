@@ -7,24 +7,47 @@ pub const InitError = error{
     Unsupported,
 };
 
-fn initEmpty() !void {}
+pub fn Module(comptime T: type) type {
+    return struct {
+        const Self = @This();
 
-pub const Module = struct {
-    name: []const u8,
-    payload: ?*allowzero anyopaque = null,
-    err: ?InitError = null,
-    init: *const fn () InitError!void = initEmpty,
+        name: []const u8,
+        payload: ?T = null,
+        err: ?InitError = null,
+        init: *const fn () InitError!T,
 
-    pub fn data(self: *Module, res_type: type) InitError!res_type {
-        if (self.err) |err| {
-            return err;
+        pub fn data(self: *Self) InitError!T {
+            if (self.err) |err| {
+                return err;
+            }
+            if (self.payload) |res| return res else {
+                const res = self.init() catch |err| {
+                    self.err = err;
+                    return err;
+                };
+                self.payload = res;
+                return res;
+            }
         }
-        return if (self.payload) |res| @ptrCast(@alignCast(res)) else new: {
-            self.init() catch |err| {
+
+        pub fn data_ref(self: *Self) InitError!*T {
+            if (self.err) |err| {
+                return err;
+            }
+            if (self.payload) |*res| return res else {
+                try self.load();
+                return &self.payload.?;
+            }
+        }
+
+        pub fn load(self: *Self) InitError!void {
+            if (self.err) |err| {
+                return err;
+            }
+            self.payload = self.init() catch |err| {
                 self.err = err;
                 return err;
             };
-            break :new @ptrCast(@alignCast(self.payload.?));
-        };
-    }
-};
+        }
+    };
+}

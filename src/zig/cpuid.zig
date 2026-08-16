@@ -197,17 +197,15 @@ fn getCPUExtendedInfo() CPUExtendedInfo {
 
 var info: Info = undefined;
 
-fn init() modules.InitError!void {
-    info = .{
+fn init() modules.InitError!Info {
+    return .{
         .vendor_id = getCPUVendorID(),
         .features = getCPUFeatures(),
         .extended_info = getCPUExtendedInfo(),
     };
-
-    mod.payload = &info;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(Info) = .{
     .name = "cpuid",
     .init = init,
 };

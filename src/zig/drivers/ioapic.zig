@@ -138,8 +138,8 @@ pub fn alloc(
     trigger_mode: IOAPIC.TriggerMode,
     target: cpu.CPU,
 ) AllocError!std.math.Log2Int(u32) {
-    const ioapics = try mod.data(*[]IOAPIC);
-    for (ioapics.*) |*ioapic| {
+    const ioapics = try mod.data();
+    for (ioapics) |*ioapic| {
         if (ioapic.alloc(mask)) |irq| {
             ioapic.map(irq, vec, polarity, trigger_mode, target);
             return irq;
@@ -148,18 +148,15 @@ pub fn alloc(
     return error.NoAvailableLines;
 }
 
-fn init() modules.InitError!void {
-    const gpa = (try heap.mod.data(*std.mem.Allocator)).*;
+fn init() modules.InitError![]IOAPIC {
+    const gpa = try heap.mod.data();
     var ioapic_entries = madt.findMADTEntries(
         madt.MADTEntryIOAPIC,
         gpa,
     ) catch return error.InitializationFailure;
     defer ioapic_entries.deinit(gpa);
 
-    const Static = struct {
-        var payload: []IOAPIC = undefined;
-    };
-    Static.payload = gpa.alloc(
+    const payload = gpa.alloc(
         IOAPIC,
         ioapic_entries.items.len,
     ) catch return error.CriticalSystemFailure;
@@ -178,13 +175,13 @@ fn init() modules.InitError!void {
         ioapic.base = @intCast(entry.base);
         ioapic.detect();
         console.print("I/O APIC: {}.\n", .{ioapic});
-        Static.payload[i] = ioapic;
+        payload[i] = ioapic;
     }
 
-    mod.payload = @ptrCast(&Static.payload);
+    return payload;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module([]IOAPIC) = .{
     .name = "ioapic",
     .init = init,
 };

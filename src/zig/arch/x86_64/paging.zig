@@ -89,7 +89,7 @@ fn resolveTable(
 
 fn applyPATIndex(entry: *PageEntry, vflags: virtual.Vflags, size: PageSize) MapError!void {
     var res = entry;
-    const pat_idx: u3 = if ((try cpuid.mod.data(*cpuid.Info)).features.msr)
+    const pat_idx: u3 = if ((try cpuid.mod.data()).features.msr)
         @intFromEnum(vflags.cache_mode)
     else
         0;
@@ -283,7 +283,7 @@ pub fn mapRegion(vr: *const virtual.Vregion) MapError!void {
         }
         const paddr_int: usize = @intFromPtr(paddr);
         const vaddr_int: usize = @intFromPtr(vaddr);
-        const cpuid_info = try cpuid.mod.data(*cpuid.Info);
+        const cpuid_info = try cpuid.mod.data();
         if (cpuid_info.extended_info.pdpe1gb and remaining >= @intFromEnum(PageSize.@"1g") and (paddr_int % @intFromEnum(PageSize.@"1g")) == 0 and (vaddr_int % @intFromEnum(PageSize.@"1g")) == 0) {
             try mapPage(vaddr, paddr, PageSize.@"1g", vflags);
             inc = @intFromEnum(PageSize.@"1g");
@@ -355,9 +355,9 @@ pub fn init() MapError!void {
 
     const multiboot = @import("../../multiboot.zig");
     const regions = [_]virtual.Vregion{
-        (try pmm.mod.data(*pmm.Payload)).global_vr,
-        (try @import("../../elf.zig").mod.data(*virtual.Vregion)).*,
-        (try multiboot.mod.data(*multiboot.Payload)).multiboot_vr,
+        (try pmm.mod.data()).global_vr,
+        (try @import("../../elf.zig").mod.data()),
+        (try multiboot.mod.data()).multiboot_vr,
     };
     for (regions) |vr| {
         try mapRegionInit(pml2, vr);

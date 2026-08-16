@@ -59,7 +59,7 @@ fn verifySDT(ptr: *const sdt.DefBlockHeader, len: usize) bool {
 }
 
 pub fn findSDT(sig: *const [4]u8) modules.InitError!?*sdt.DefBlockHeader {
-    for ((try mod.data(*[]*sdt.DefBlockHeader)).*) |ptr| {
+    for ((try mod.data())) |ptr| {
         if (std.mem.eql(u8, ptr.signature[0..4], sig)) {
             return ptr;
         }
@@ -68,8 +68,8 @@ pub fn findSDT(sig: *const [4]u8) modules.InitError!?*sdt.DefBlockHeader {
 }
 
 /// Initializes ACPI.
-fn init() modules.InitError!void {
-    const allocator = (try heap.mod.data(*std.mem.Allocator)).*;
+fn init() modules.InitError![]*sdt.DefBlockHeader {
+    const allocator = try heap.mod.data();
     const ptrs = rsdp: {
         const tag_new = multiboot.multibootFindTag(
             multiboot.MultibootTagAcpiNew,
@@ -143,15 +143,11 @@ fn init() modules.InitError!void {
         }
     }
 
-    const Static = struct {
-        var payload: []*sdt.DefBlockHeader = undefined;
-    };
-    Static.payload = ptrs;
-    mod.payload = @ptrCast(&Static.payload);
+    return ptrs;
 }
 
 /// The ACPI module, which maps and parses ACPI tables during the boot sequence.
-pub var mod: modules.Module = .{
+pub var mod: modules.Module([]*sdt.DefBlockHeader) = .{
     .name = "acpi",
     .init = init,
 };

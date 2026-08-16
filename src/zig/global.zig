@@ -15,14 +15,13 @@ pub const CoreInfo = struct {
     size: usize,
 };
 
-const info: *allowzero align(paging.page_size) CoreInfo = @ptrFromInt(0);
-
-fn init() modules.InitError!void {
+fn init() modules.InitError!*allowzero align(paging.page_size) CoreInfo {
+    const info: *allowzero align(paging.page_size) CoreInfo = @ptrFromInt(0);
     info.size = @sizeOf(CoreInfo);
-    mod.payload = info;
+    return info;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(*allowzero align(paging.page_size) CoreInfo) = .{
     .name = "global",
     .init = init,
 };

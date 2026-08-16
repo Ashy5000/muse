@@ -114,7 +114,6 @@ fn init() timer.Driver.InitError!bool {
         .{ .cache_mode = .Uncacheable },
     );
     registers = @ptrCast(@alignCast(regs_virt.ptr));
-    driver_timer.period = registers.general.period / 1000;
     registers.config.enable = false;
     for (0..registers.general.id.comparator_count + 1) |i| {
         registers.timers[i].info.int_enable = false;
@@ -125,7 +124,6 @@ fn init() timer.Driver.InitError!bool {
     if (sys_timer) |_| {} else {
         sys_timer = &registers.timers[0];
     }
-    console.print("Found HPET with period 0x{x}.\n", .{driver_timer.period});
     const vec = try interrupts.alloc(hpet_tick) orelse return error.IDTFull;
     const irq = try ioapic.alloc(
         sys_timer.?.info.ioapic_routing_map,

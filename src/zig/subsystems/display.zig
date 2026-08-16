@@ -19,22 +19,17 @@ pub const Driver = struct {
     scrollGrid: *const fn (inc: usize) DrawError!void,
 };
 
-fn init() modules.InitError!void {
-    const Static = struct {
-        var display_primary: *Driver = undefined;
-    };
+fn init() modules.InitError!*Driver {
     for (drivers.drivers_display) |d| {
         if (d.init()) {
-            Static.display_primary = d;
-            mod.payload = Static.display_primary;
-            return;
+            return d;
         }
     }
     return error.Unsupported;
 }
 
 /// The display module, which initializes the subsystem for video output.
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(*Driver) = .{
     .name = "display",
     .init = init,
 };

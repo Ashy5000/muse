@@ -21,7 +21,7 @@ fn maybeScroll(cons: *Console) display.DrawError!void {
 const PrintError = display.DrawError || modules.InitError;
 
 fn printChar(char: u8) PrintError!void {
-    var cons = try mod.data(*Console);
+    const cons = try mod.data_ref();
     io.out(8, 0xe9, char);
     if (char == '\n') {
         cons.x = 0;
@@ -101,20 +101,16 @@ pub fn hexdump(data: []const u8) void {
 
 const heap = @import("alloc/heap.zig");
 
-fn init() modules.InitError!void {
-    const console = (try heap.mod.data(*std.mem.Allocator)).create(
-        Console,
-    ) catch return error.CriticalSystemFailure;
-    console.* = .{
-        .d = try display.mod.data(*display.Driver),
+fn init() modules.InitError!Console {
+    return .{
+        .d = try display.mod.data(),
         .x = 0,
         .y = 0,
     };
-    mod.payload = console;
 }
 
 /// The console module, which initializes the system console.
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(Console) = .{
     .name = "console",
     .init = init,
 };

@@ -123,7 +123,7 @@ pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
         @compileError("invalid multiboot tag struct: first field should be a TagType");
     }
     const tag_type = struct_info.field_attrs[0].defaultValue(field_type);
-    const info = (try mod.data(*Payload)).info;
+    const info = (try mod.data()).info;
     var tag: *MultibootTag = &info.first_tag;
     while (@intFromPtr(tag) < @intFromPtr(info) + info.size) {
         if (tag.tag_type == tag_type) {
@@ -147,7 +147,7 @@ pub const Payload = struct {
     multiboot_vr: virtual.Vregion,
 };
 
-pub fn init() modules.InitError!void {
+pub fn init() modules.InitError!Payload {
     if ((multiboot_magic orelse return error.Unsupported) != multiboot2_magic) {
         return error.InitializationFailure;
     }
@@ -156,10 +156,7 @@ pub fn init() modules.InitError!void {
     const end = std.mem.Alignment.forward(paging.page_align, @intFromPtr(info) + info.size);
     const pg_cnt = (end - start) / paging.page_size;
 
-    const Static = struct {
-        var payload: Payload = undefined;
-    };
-    Static.payload = .{
+    return .{
         .info = info,
         .multiboot_vr = .{
             .vaddr = @ptrFromInt(start),
@@ -167,10 +164,9 @@ pub fn init() modules.InitError!void {
             .pg_cnt = pg_cnt,
         },
     };
-    mod.payload = &Static.payload;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(Payload) = .{
     .name = "multiboot2",
     .init = init,
 };

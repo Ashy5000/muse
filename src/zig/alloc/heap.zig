@@ -145,14 +145,10 @@ pub const AllocCreateError = error{
 };
 
 var global_heap: Heap = undefined;
-var allocator: std.mem.Allocator = .{
-    .ptr = &global_heap,
-    .vtable = &vtable,
-};
 
-fn init() modules.InitError!void {
-    const region = try elf.mod.data(*virtual.Vregion);
-    const info = (try pmm.mod.data(*pmm.Payload)).info;
+fn init() modules.InitError!std.mem.Allocator {
+    const region = try elf.mod.data();
+    const info = (try pmm.mod.data()).info;
     global_heap = .{
         .limit = @ptrFromInt(@intFromPtr(info) + info.size + 1),
         .max_limit = @ptrCast(region.vaddr),
@@ -164,11 +160,14 @@ fn init() modules.InitError!void {
         heapSbrk(&global_heap, @sizeOf(usize)).?,
     );
     prev_size.* = 0;
-    mod.payload = &allocator;
+    return .{
+        .ptr = &global_heap,
+        .vtable = &vtable,
+    };
 }
 
 /// The heap module, which initializes a heap for the kernel.
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(std.mem.Allocator) = .{
     .name = "heap",
     .init = init,
 };

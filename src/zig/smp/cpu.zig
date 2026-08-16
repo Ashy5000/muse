@@ -11,7 +11,7 @@ pub const CPU = struct {
 pub var cpus = std.ArrayList(CPU).empty;
 
 pub fn getActiveCPU() modules.InitError!*CPU {
-    const regs = try lapic.mod.data(*volatile lapic.LAPICRegisters);
+    const regs = try lapic.mod.data();
     const id = regs.lapic_id;
     for (cpus.items) |*cpu| {
         if (id == cpu.lapic_id) {

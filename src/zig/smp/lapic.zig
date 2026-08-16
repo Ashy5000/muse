@@ -76,7 +76,7 @@ pub const LAPICRegisters = extern struct {
     rsvd4: u32 align(16),
 };
 
-fn enableAPIC() (virtual.MapError || modules.InitError)!void {
+fn enableAPIC() (virtual.MapError || modules.InitError)!*volatile LAPICRegisters {
     const APICBaseMSR = packed struct {
         rsvd0: u8,
         bsp: bool,
@@ -96,7 +96,7 @@ fn enableAPIC() (virtual.MapError || modules.InitError)!void {
         base_ptr[0..@sizeOf(LAPICRegisters)],
         .{ .cache_mode = .Uncacheable },
     );
-    mod.payload = vbase_slice.ptr;
+    return @ptrCast(@alignCast(vbase_slice.ptr));
 }
 
 pub const LAPICInitError = modules.InitError || std.mem.Allocator.Error;
@@ -105,7 +105,7 @@ pub const LAPICInitError = modules.InitError || std.mem.Allocator.Error;
 /// APIC for that core specifically, as compared to the boot module which sets
 /// up and enables APIC functionality globally.
 pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
-    const lapic_regs = try mod.data(*volatile LAPICRegisters);
+    const lapic_regs = try mod.data();
     lapic_regs.spurious_int.apic_software_enable = true;
     try cpu.cpus.append(gpa, .{
         .lapic_id = @intCast(lapic_regs.lapic_id),
@@ -121,16 +121,14 @@ pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
 
 pub fn eoi() void {
     // If an interrupt was triggered, the I/O APIC has to be initalized.
-    const lapic_regs = mod.data(*volatile LAPICRegisters) catch unreachable;
+    const lapic_regs = mod.data() catch unreachable;
     lapic_regs.eoi = 0;
 }
 
-fn init() modules.InitError!void {
-    if (!(try cpuid.mod.data(
-        *cpuid.Info,
-    )).features.apic) return error.Unsupported;
+fn init() modules.InitError!*volatile LAPICRegisters {
+    if (!(try cpuid.mod.data()).features.apic) return error.Unsupported;
 
-    const gpa = (try heap.mod.data(*std.mem.Allocator)).*;
+    const gpa = try heap.mod.data();
     // TODO: same thing here
     var lapic_entries = madt.findMADTEntries(
         madt.MADTEntryLAPIC,
@@ -142,15 +140,18 @@ fn init() modules.InitError!void {
     }
 
     // TODO: propagate module.InitError's.
-    enableAPIC() catch return error.InitializationFailure;
+    const payload = enableAPIC() catch return error.InitializationFailure;
+    mod.payload = payload; // initLocalAPIC needs the payload, so we set it now
 
     initLocalAPIC(gpa) catch |err| switch (err) {
         error.OutOfMemory => return error.CriticalSystemFailure,
         else => unreachable, // Already inited
     };
+
+    return payload;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(*volatile LAPICRegisters) = .{
     .name = "lapic",
     .init = init,
 };

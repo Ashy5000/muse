@@ -17,7 +17,7 @@ const exceptions: [2]*const ISRInfo = .{
 pub const Vec = std.math.Log2Int(u256);
 
 pub fn alloc(isr: ISR) modules.InitError!?Vec {
-    const bitmap = try mod.data(*u256);
+    const bitmap = try mod.data_ref();
     for (0..256) |i| {
         const vec: Vec = @intCast(i);
         if ((bitmap.* >> vec) & 0x1 == 0) {
@@ -34,20 +34,17 @@ pub fn alloc(isr: ISR) modules.InitError!?Vec {
 
 const heap = @import("alloc/heap.zig");
 
-fn init() modules.InitError!void {
+fn init() modules.InitError!u256 {
     for (exceptions) |info| {
         idt.loadISR(info.*);
     }
     asm volatile ("sti");
 
-    const Static = struct {
-        // 32 for exceptions, 32 for PIC
-        var payload: u256 = 0xffffffffffffffff;
-    };
-    mod.payload = &Static.payload;
+    // 32 for exceptions, 32 for PIC
+    return 0xffffffffffffffff;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(u256) = .{
     .name = "interrupts",
     .init = init,
 };

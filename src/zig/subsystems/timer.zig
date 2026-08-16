@@ -21,20 +21,19 @@ pub const Driver = struct {
 
 pub const tick_period: IntervalPico = 200_000_000_000; // 200 microseconds
 
-fn init() modules.InitError!void {
+fn init() modules.InitError!*Driver {
     for (drivers.drivers_timer) |t| {
         if (t.init() catch return error.InitializationFailure) {
-            mod.payload = t;
             t.period = tick_period;
             t.enable();
-            return;
+            return t;
         }
     }
     return error.Unsupported;
 }
 
 /// The display module, which initializes the subsystem for video output.
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(*Driver) = .{
     .name = "timer",
     .init = init,
 };

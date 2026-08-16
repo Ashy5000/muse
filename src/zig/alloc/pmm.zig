@@ -82,7 +82,7 @@ fn pmmAllocInRegion(
 /// physical address, guarenteed to be aligned to its size rounded up to the
 /// next power of 2.
 pub fn pmmAlloc(req_size: usize) AllocError![*]align(paging.page_size) u8 {
-    const info = (try mod.data(*Payload)).info;
+    const info = (try mod.data()).info;
     for (&info.regions) |region| {
         if (region.start < 0xffffffff) {
             continue;
@@ -99,7 +99,7 @@ pub fn pmmAlloc(req_size: usize) AllocError![*]align(paging.page_size) u8 {
 }
 
 pub fn pmmAllocLow(req_size: usize) AllocError![*]align(paging.page_size) u8 {
-    const info = (try mod.data(*Payload)).info;
+    const info = (try mod.data()).info;
     for (info.regions) |region| {
         if (region.start > 0xffffffff) {
             continue;
@@ -124,7 +124,7 @@ pub const StatusError = error{InvalidAddress} || modules.InitError;
 /// address. If the status of the page is equal to the requested status,
 /// no error is returned. This means that double-frees do not produce an error.
 pub fn pmmSetStatus(addr: usize, req_size: usize, status: bool) StatusError!void {
-    const info = (try mod.data(*Payload)).info;
+    const info = (try mod.data()).info;
     const size = std.mem.Alignment.forward(
         std.mem.Alignment.fromByteUnits(min_chunk_size),
         req_size,
@@ -152,8 +152,8 @@ pub const Payload = struct {
     global_vr: virtual.Vregion,
 };
 
-fn init() modules.InitError!void {
-    const info = try mmap.mod.data(*allowzero align(paging.page_size) global.CoreInfo);
+fn init() modules.InitError!Payload {
+    const info = try mmap.mod.data();
     for (0..info.region_cnt) |i| {
         var region = &info.regions[i];
         var tiers: [tier_cnt][]bitmaps.BitmapUnit = undefined;
@@ -181,11 +181,8 @@ fn init() modules.InitError!void {
         region.bitmaps = tiers;
     }
 
-    // Used for local variables with a global lifetime, like with C's static keyword.
-    const Static = struct {
-        var payload: Payload = undefined;
-    };
-    Static.payload = .{
+    // We have to set the payload right away so pmmSetStatus can see it.
+    mod.payload = .{
         .info = info,
         .global_vr = .{
             .vaddr = @ptrCast(@alignCast(info)),
@@ -194,11 +191,11 @@ fn init() modules.InitError!void {
         },
     };
 
-    mod.payload = &Static.payload;
     pmmSetStatus(@intFromPtr(info), info.size, true) catch unreachable;
+    return mod.payload.?;
 }
 
-pub var mod: modules.Module = .{
+pub var mod: modules.Module(Payload) = .{
     .name = "pmm",
     .init = init,
 };

@@ -375,7 +375,7 @@ fn scanPCIBus(bus: u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!voi
 const PCIInitError = std.mem.Allocator.Error || modules.InitError;
 
 pub fn init() PCIInitError!void {
-    const allocator = (try heap.mod.data(std.mem.Allocator)).*;
+    const allocator = (try heap.mod.data(*std.mem.Allocator)).*;
     const bus_cnt: u8 = try scanPCIDev(0, 0, allocator);
     for (0..bus_cnt) |i| {
         try scanPCIBus(@intCast(i), allocator);

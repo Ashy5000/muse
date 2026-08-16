@@ -13,7 +13,7 @@ const max_chunk_size_log: usize = std.math.log2_int(usize, max_chunk_size);
 pub const tier_cnt: usize = max_chunk_size_log - min_chunk_size_log + 1;
 
 fn setStatusWithinRegion(
-    region: *allowzero global.Region,
+    region: global.Region,
     addr: usize,
     size: usize,
     status: bool,
@@ -56,21 +56,18 @@ fn setStatusWithinRegion(
     }
 }
 
-pub const AllocError = error{NoPhysMem};
+pub const AllocError = error{NoPhysMem} || modules.InitError;
 
 fn pmmAllocInRegion(
     req_size: usize,
-    region: *allowzero global.Region,
+    region: global.Region,
 ) AllocError![*]align(paging.page_size) u8 {
     const size = std.mem.Alignment.forward(
         std.mem.Alignment.fromByteUnits(min_chunk_size),
         req_size,
     );
     const tier_idx = std.math.log2_int_ceil(usize, size) - min_chunk_size_log;
-    const tiers = region.bitmaps orelse uninit: {
-        init();
-        break :uninit region.bitmaps.?;
-    };
+    const tiers = region.bitmaps.?;
     const idx = bitmaps.bitmapFind(
         tiers[tier_idx],
     ) orelse return error.NoPhysMem;
@@ -85,16 +82,14 @@ fn pmmAllocInRegion(
 /// physical address, guarenteed to be aligned to its size rounded up to the
 /// next power of 2.
 pub fn pmmAlloc(req_size: usize) AllocError![*]align(paging.page_size) u8 {
-    if (!inited) {
-        init();
-    }
-    for (&global.info.regions) |*region| {
+    const info = (try mod.data(*Payload)).info;
+    for (&info.regions) |region| {
         if (region.start < 0xffffffff) {
             continue;
         }
         return pmmAllocInRegion(req_size, region) catch continue;
     }
-    for (&global.info.regions) |*region| {
+    for (&info.regions) |region| {
         if (region.start >= 0xffffffff) {
             continue;
         }
@@ -104,10 +99,8 @@ pub fn pmmAlloc(req_size: usize) AllocError![*]align(paging.page_size) u8 {
 }
 
 pub fn pmmAllocLow(req_size: usize) AllocError![*]align(paging.page_size) u8 {
-    if (!inited) {
-        init();
-    }
-    for (global.info.regions) |region| {
+    const info = (try mod.data(*Payload)).info;
+    for (info.regions) |region| {
         if (region.start > 0xffffffff) {
             continue;
         }
@@ -119,24 +112,25 @@ pub fn pmmAllocLow(req_size: usize) AllocError![*]align(paging.page_size) u8 {
             ),
             .bitmaps = region.bitmaps,
         };
-        return pmmAllocInRegion(req_size, &region_trunc) catch continue;
+        return pmmAllocInRegion(req_size, region_trunc) catch continue;
     }
     return error.NoPhysMem;
 }
 
-pub const StatusError = error{InvalidAddress};
+pub const StatusError = error{InvalidAddress} || modules.InitError;
 
 /// If `status` is true, sets the status of the physical page at physical
 /// address `addr` as in use. Otherwise, frees the physical page at the
 /// address. If the status of the page is equal to the requested status,
 /// no error is returned. This means that double-frees do not produce an error.
 pub fn pmmSetStatus(addr: usize, req_size: usize, status: bool) StatusError!void {
+    const info = (try mod.data(*Payload)).info;
     const size = std.mem.Alignment.forward(
         std.mem.Alignment.fromByteUnits(min_chunk_size),
         req_size,
     );
-    for (0..global.info.region_cnt) |i| {
-        const vr: *global.Region = &global.info.regions[i];
+    for (0..info.region_cnt) |i| {
+        const vr: global.Region = info.regions[i];
         const start: usize = vr.start;
         const end: usize = start + vr.pg_cnt * paging.page_size;
         if (addr >= start and addr < end) {
@@ -153,19 +147,21 @@ pub fn pmmFree(addr: usize, size: usize) void {
     pmmSetStatus(addr, size, false) catch return;
 }
 
-var global_vr: virtual.Vregion = undefined;
+pub const Payload = struct {
+    info: *allowzero align(paging.page_size) global.CoreInfo,
+    global_vr: virtual.Vregion,
+};
 
-var inited = false;
-
-fn init() void {
-    for (0..global.info.region_cnt) |i| {
-        var region = &global.info.regions[i];
+fn init() modules.InitError!void {
+    const info = try mmap.mod.data(*allowzero align(paging.page_size) global.CoreInfo);
+    for (0..info.region_cnt) |i| {
+        var region = &info.regions[i];
         var tiers: [tier_cnt][]bitmaps.BitmapUnit = undefined;
         for (min_chunk_size_log..max_chunk_size_log + 1, 0..tier_cnt) |tier_idx, j| {
             const chunk_size = @as(usize, 1) << @intCast(tier_idx);
             const bit_cnt = (region.pg_cnt * paging.page_size) / chunk_size;
             const len = (bit_cnt + @bitSizeOf(bitmaps.BitmapUnit) - 1) / @bitSizeOf(bitmaps.BitmapUnit);
-            const bitmap_ptr: [*]bitmaps.BitmapUnit = @ptrFromInt(@intFromPtr(global.info) + global.info.size);
+            const bitmap_ptr: [*]bitmaps.BitmapUnit = @ptrFromInt(@intFromPtr(info) + info.size);
             const bitmap: []bitmaps.BitmapUnit = bitmap_ptr[0..len];
             @memset(bitmap, 0);
             const extra_bits: usize = len * @bitSizeOf(bitmaps.BitmapUnit) - bit_cnt;
@@ -179,17 +175,30 @@ fn init() void {
                 const bit_idx: std.math.Log2Int(bitmaps.BitmapUnit) = @intCast(@bitSizeOf(bitmaps.BitmapUnit) - 1 - k);
                 bitmap[bitmap.len - 1] |= @as(bitmaps.BitmapUnit, 1) << bit_idx;
             }
-            global.info.size += len;
+            info.size += len;
             tiers[j] = bitmap;
         }
         region.bitmaps = tiers;
     }
-    global_vr = .{
-        .vaddr = @ptrCast(global.info),
-        .paddr = @ptrCast(global.info),
-        .pg_cnt = (global.info.size + paging.page_size - 1) / paging.page_size,
+
+    // Used for local variables with a global lifetime, like with C's static keyword.
+    const Static = struct {
+        var payload: Payload = undefined;
     };
-    paging.registerRegion(&global_vr);
-    pmmSetStatus(@intFromPtr(global.info), global.info.size, true) catch unreachable;
-    inited = true;
+    Static.payload = .{
+        .info = info,
+        .global_vr = .{
+            .vaddr = @ptrCast(@alignCast(info)),
+            .paddr = @ptrCast(@alignCast(info)),
+            .pg_cnt = (info.size + paging.page_size - 1) / paging.page_size,
+        },
+    };
+
+    mod.payload = &Static.payload;
+    pmmSetStatus(@intFromPtr(info), info.size, true) catch unreachable;
 }
+
+pub var mod: modules.Module = .{
+    .name = "pmm",
+    .init = init,
+};

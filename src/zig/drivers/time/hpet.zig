@@ -93,7 +93,10 @@ fn hpet_tick() callconv(idt.int_callconv) void {
             sys_timer.?.comparator = target;
         },
     }
-    tick.tick();
+    tick.tick() catch |err| console.print(
+        "Tick failed with error: {}.\n",
+        .{err},
+    );
     lapic.eoi();
 }
 
@@ -104,13 +107,14 @@ fn init() timer.Driver.InitError!bool {
     io.out(8, 0x40, 0x00);
     io.out(8, 0x40, 0x00);
 
-    const table: *HPET = @ptrCast(acpi.findSDT("HPET") orelse return false);
+    const table: *HPET = @ptrCast((try acpi.findSDT("HPET")) orelse return false);
     const regs_phys: [*]u8 = @ptrFromInt(@as(usize, @intCast(table.addr)));
     const regs_virt = try virtual.mapPhysObj(
         regs_phys[0..@sizeOf(Registers)],
         .{ .cache_mode = .Uncacheable },
     );
     registers = @ptrCast(@alignCast(regs_virt.ptr));
+    driver_timer.period = registers.general.period / 1000;
     registers.config.enable = false;
     for (0..registers.general.id.comparator_count + 1) |i| {
         registers.timers[i].info.int_enable = false;
@@ -123,14 +127,14 @@ fn init() timer.Driver.InitError!bool {
     }
     console.print("Found HPET with period 0x{x}.\n", .{driver_timer.period});
     const vec = try interrupts.alloc(hpet_tick) orelse return error.IDTFull;
-    console.print("{}", .{sys_timer.?.info.ioapic_routing_map});
-    const irq = ioapic.alloc(
+    const irq = try ioapic.alloc(
         sys_timer.?.info.ioapic_routing_map,
         vec,
         .active_high,
         .edge_sensitive,
-        cpu.getActiveCPU().*,
-    ) orelse return error.NoAvailableIRQs;
+
+        (try cpu.getActiveCPU()).*,
+    );
     sys_timer.?.info.ioapic_irq = irq;
     return true;
 }

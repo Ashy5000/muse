@@ -33,7 +33,7 @@ pub const VGADrawError = error{
     VGAUninit,
 };
 
-pub fn putPixel(x: usize, y: usize, c: display.Color) display.DisplayDrawError!void {
+pub fn putPixel(x: usize, y: usize, c: display.Color) display.DrawError!void {
     const fb: Framebuffer = framebuffer orelse return error.VGAUninit;
     const offset = y * fb.pitch + x * @bitSizeOf(display.Color) / 8;
     fb.bfr[offset] = @truncate(c);
@@ -41,7 +41,7 @@ pub fn putPixel(x: usize, y: usize, c: display.Color) display.DisplayDrawError!v
     fb.bfr[offset + 2] = @truncate(c >> 16);
 }
 
-fn fillRect(x: usize, y: usize, w: usize, h: usize, c: display.Color) VGADrawError!void {
+fn fillRect(x: usize, y: usize, w: usize, h: usize, c: display.Color) display.DrawError!void {
     const fb: Framebuffer = framebuffer orelse return error.VGAUninit;
     const pixel_size = @bitSizeOf(display.Color) / 8;
     var y_p = y;
@@ -59,7 +59,7 @@ fn fillRect(x: usize, y: usize, w: usize, h: usize, c: display.Color) VGADrawErr
     }
 }
 
-pub fn scrollGrid(inc: usize) display.DisplayDrawError!void {
+pub fn scrollGrid(inc: usize) display.DrawError!void {
     const fb: Framebuffer = framebuffer orelse return error.VGAUninit;
     const top_aligned: usize = fb.height - (fb.height % inc);
     @memmove(fb.bfr, fb.bfr[fb.pitch * inc .. fb.pitch * top_aligned]);

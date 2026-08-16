@@ -19,8 +19,10 @@ pub const Queue = struct {
     },
 };
 
-pub fn push(task: *Task) void {
-    const queue = &cpu.getActiveCPU().queue;
+const modules = @import("modules.zig");
+
+pub fn push(task: *Task) modules.InitError!void {
+    const queue = &(try cpu.getActiveCPU()).queue;
     @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .in_use, .monotonic);
     defer @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .available, .release);
     if (queue.list) |*list| {
@@ -34,8 +36,8 @@ pub fn push(task: *Task) void {
     }
 }
 
-pub fn schedule() void {
-    const queue = &cpu.getActiveCPU().queue;
+pub fn schedule() modules.InitError!void {
+    const queue = &(try cpu.getActiveCPU()).queue;
     if (queue.list) |*list| {
         const old = queue.active;
         const new = list.next;
@@ -49,8 +51,8 @@ pub fn schedule() void {
     }
 }
 
-pub fn preempt() void {
-    const queue = &cpu.getActiveCPU().queue;
+pub fn preempt() modules.InitError!void {
+    const queue = &(try cpu.getActiveCPU()).queue;
     if (@atomicLoad(@TypeOf(queue.sync_status), &queue.sync_status, .acquire) != .available) {
         return;
     }

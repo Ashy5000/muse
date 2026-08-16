@@ -77,8 +77,3 @@ pub fn freeMappedObj(s: []u8) void {
         frames.frameFree(addr);
     }
 }
-
-pub var mod: modules.Module = .{
-    .name = "virtual",
-    .deps = &.{ &pmm.mod, &paging.mod, &frames.mod },
-};

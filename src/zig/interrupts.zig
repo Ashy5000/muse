@@ -17,7 +17,7 @@ const exceptions: [2]*const ISRInfo = .{
 pub const Vec = std.math.Log2Int(u256);
 
 pub fn alloc(isr: ISR) modules.InitError!?Vec {
-    const bitmap = try mod.data(u256);
+    const bitmap = try mod.data(*u256);
     for (0..256) |i| {
         const vec: Vec = @intCast(i);
         if ((bitmap.* >> vec) & 0x1 == 0) {
@@ -39,9 +39,12 @@ fn init() modules.InitError!void {
         idt.loadISR(info.*);
     }
     asm volatile ("sti");
-    mod.payload = (try heap.mod.data(std.mem.Allocator)).create(
-        u256,
-    ) catch return error.CriticalSystemFailure;
+
+    const Static = struct {
+        // 32 for exceptions, 32 for PIC
+        var payload: u256 = 0xffffffffffffffff;
+    };
+    mod.payload = &Static.payload;
 }
 
 pub var mod: modules.Module = .{

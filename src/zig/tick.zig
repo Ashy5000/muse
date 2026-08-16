@@ -15,8 +15,11 @@ const SleepingTask = struct {
 var sleep_pool = std.heap.MemoryPool(SleepingTask).empty;
 var sleep_queue: ?*SleepingTask = null;
 
-pub fn sleep(gpa: std.mem.Allocator, time: timer.IntervalPico) std.mem.Allocator.Error!void {
-    const queue = &cpu.getActiveCPU().queue;
+const modules = @import("modules.zig");
+const TickError = std.mem.Allocator.Error || modules.InitError;
+
+pub fn sleep(gpa: std.mem.Allocator, time: timer.IntervalPico) TickError!void {
+    const queue = &(try cpu.getActiveCPU()).queue;
     @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .in_use, .monotonic);
     defer @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .available, .release);
     const sleeping: *SleepingTask = try sleep_pool.create(gpa);
@@ -26,16 +29,16 @@ pub fn sleep(gpa: std.mem.Allocator, time: timer.IntervalPico) std.mem.Allocator
         .next = sleep_queue,
     };
     sleep_queue = sleeping;
-    scheduler.schedule();
+    try scheduler.schedule();
 }
 
-pub fn tick() void {
+pub fn tick() TickError!void {
     var sleeping_task: ?*SleepingTask = sleep_queue;
     var prev: ?*SleepingTask = null;
     while (sleeping_task) |task| {
         const next = task.next;
         if (task.countdown <= timer.tick_period) {
-            scheduler.push(task.task);
+            try scheduler.push(task.task);
             sleep_pool.destroy(task);
             if (prev) |p| {
                 p.next = next;
@@ -51,6 +54,6 @@ pub fn tick() void {
     slice_time += timer.tick_period;
     if (slice_time >= slice_duration) {
         slice_time = 0;
-        scheduler.preempt();
+        try scheduler.preempt();
     }
 }

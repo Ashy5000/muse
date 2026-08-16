@@ -3,16 +3,19 @@ const global = @import("global.zig");
 const paging = @import("arch.zig").paging;
 const modules = @import("modules.zig");
 
-pub fn init() modules.ModuleInitError!void {
-    const tag = multiboot.multibootFindTag(multiboot.MultibootTagMmap) catch return error.ModuleUnsupported;
+pub fn init() modules.InitError!void {
+    const tag = multiboot.multibootFindTag(
+        multiboot.MultibootTagMmap,
+    ) catch return error.Unsupported;
     var entry: *align(1) multiboot.MultibootMmapEntry = &tag.first_entry;
     var idx: usize = 0;
-    while (@intFromPtr(entry) < @intFromPtr(tag) + tag.size and idx < global.info.regions.len) {
+    const info = try global.mod.data(*allowzero global.CoreInfo);
+    while (@intFromPtr(entry) < @intFromPtr(tag) + tag.size and idx < info.regions.len) {
         if (entry.type != .available) {
             entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);
             continue;
         }
-        global.info.regions[idx] = .{
+        info.regions[idx] = .{
             .start = @intCast(entry.addr),
             .pg_cnt = @intCast(entry.len / paging.page_size),
             .bitmaps = null,
@@ -20,11 +23,11 @@ pub fn init() modules.ModuleInitError!void {
         entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);
         idx += 1;
     }
-    global.info.region_cnt = idx;
+    info.region_cnt = idx;
+    mod.payload = info;
 }
 
 pub var mod: modules.Module = .{
     .name = "mmap",
-    .deps = &@as([1]*modules.Module, .{&multiboot.mod}),
     .init = init,
 };

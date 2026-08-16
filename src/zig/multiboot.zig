@@ -106,19 +106,15 @@ pub const MultibootInfo = extern struct {
 const multiboot2_magic: u32 = 0x36D76289;
 
 var multiboot_magic: ?u32 = null;
-pub var multiboot_info: ?*MultibootInfo = null;
+var multiboot_info: ?*MultibootInfo = null;
 
 const MultibootInfoError = error{
     MultibootNoInfo,
 };
 
-pub const MultibootInitError = error{
-    MultibootInvalidMagic,
-} || MultibootInfoError;
-
 pub const MultibootTagError = error{
     MultibootTagNotFound,
-} || MultibootInfoError;
+} || modules.InitError;
 
 pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
     const struct_info = @typeInfo(res_type).@"struct";
@@ -127,7 +123,7 @@ pub fn multibootFindTag(res_type: type) MultibootTagError!*align(4) res_type {
         @compileError("invalid multiboot tag struct: first field should be a TagType");
     }
     const tag_type = struct_info.field_attrs[0].defaultValue(field_type);
-    const info = multiboot_info orelse return error.MultibootNoInfo;
+    const info = (try mod.data(*Payload)).info;
     var tag: *MultibootTag = &info.first_tag;
     while (@intFromPtr(tag) < @intFromPtr(info) + info.size) {
         if (tag.tag_type == tag_type) {
@@ -146,20 +142,32 @@ pub fn config(info: *MultibootInfo, magic: u32) void {
 
 var multiboot_region: ?virtual.Vregion = null;
 
-pub fn init() modules.ModuleInitError!void {
-    if ((multiboot_magic orelse return error.ModuleMissingConfig) != multiboot2_magic) {
-        return error.ModuleInitFailure;
+pub const Payload = struct {
+    info: *MultibootInfo,
+    multiboot_vr: virtual.Vregion,
+};
+
+pub fn init() modules.InitError!void {
+    if ((multiboot_magic orelse return error.Unsupported) != multiboot2_magic) {
+        return error.InitializationFailure;
     }
-    const info = multiboot_info orelse return error.ModuleMissingConfig;
+    const info = multiboot_info orelse return error.Unsupported;
     const start = std.mem.Alignment.backward(paging.page_align, @intFromPtr(info));
     const end = std.mem.Alignment.forward(paging.page_align, @intFromPtr(info) + info.size);
     const pg_cnt = (end - start) / paging.page_size;
-    multiboot_region = .{
-        .vaddr = start,
-        .paddr = start,
-        .pg_cnt = pg_cnt,
+
+    const Static = struct {
+        var payload: Payload = undefined;
     };
-    paging.registerRegion(&multiboot_region.?);
+    Static.payload = .{
+        .info = info,
+        .multiboot_vr = .{
+            .vaddr = @ptrFromInt(start),
+            .paddr = @ptrFromInt(start),
+            .pg_cnt = pg_cnt,
+        },
+    };
+    mod.payload = &Static.payload;
 }
 
 pub var mod: modules.Module = .{

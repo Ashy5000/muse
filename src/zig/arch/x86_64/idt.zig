@@ -1,6 +1,5 @@
 const std = @import("std");
 const interrupts = @import("../../interrupts.zig");
-const modules = @import("../../modules.zig");
 
 const IDTEntry = packed struct {
     isr_lo: u16,
@@ -39,20 +38,14 @@ export var idtr: IDTR = .{ .size_dec = @sizeOf(@TypeOf(idt)) - 1, .base = 0 };
 
 pub const int_callconv = std.lang.CallingConvention{ .x86_64_interrupt = .{} };
 
+var loaded = false;
 pub fn loadISR(info: interrupts.ISRInfo) void {
+    if (!loaded) {
+        idtr.base = @intFromPtr(&idt);
+        asm volatile ("lidt [idtr]");
+        loaded = true;
+    }
     idt[info.vec].present = true;
     idt[info.vec].isr_lo = @truncate(@intFromPtr(info.isr));
     idt[info.vec].isr_hi = @truncate(@intFromPtr(info.isr) >> 16);
 }
-
-fn init() modules.ModuleInitError!void {
-    idtr.base = @intFromPtr(&idt);
-    asm volatile ("lidt [idtr]");
-}
-
-/// The idt module, which initializes and loads an Interrupt Descriptor Table
-/// for an x86_64 system.
-pub var mod: modules.Module = .{
-    .name = "idt",
-    .init = init,
-};

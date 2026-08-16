@@ -8,55 +8,66 @@ const elf = @import("../elf.zig");
 const console = @import("../console.zig");
 const modules = @import("../modules.zig");
 
-const FrameAllocInfo = struct {
+const Payload = struct {
     start: [*]align(paging.page_size) u8,
     bitmap: []bitmaps.BitmapUnit,
 };
 
-pub const FrameAllocError = error{
-    FrameAllocUninit,
-    FrameAllocNoMem,
-};
-
-var frame_alloc_global: ?FrameAllocInfo = null;
+pub const FrameAllocError = error{NoVirtFrames} || modules.InitError;
 
 /// Allocates a page-sized chunk of virtual memory, which may or may not be
 /// mapped to a physical page.
 pub fn frameAlloc() FrameAllocError![]align(paging.page_size) u8 {
-    const info: FrameAllocInfo = frame_alloc_global orelse return error.FrameAllocUninit;
-    const idx: usize = bitmaps.bitmapAlloc(info.bitmap) orelse return error.FrameAllocNoMem;
-    return info.start + (idx * paging.page_size);
+    const payload = try mod.data(*Payload);
+    const idx: usize = bitmaps.bitmapAlloc(
+        payload.bitmap,
+    ) orelse return error.FrameAllocNoMem;
+    return payload.start + (idx * paging.page_size);
 }
 
 /// Allocates `cnt` contiguous page-sized chunks of virtual memory, which
 /// may or may not be mapped to physical pages.
 pub fn frameAllocContig(cnt: usize) FrameAllocError![]align(paging.page_size) u8 {
-    const info: FrameAllocInfo = frame_alloc_global orelse return error.FrameAllocUninit;
-    const idx: usize = bitmaps.bitmapAllocContig(info.bitmap, cnt) orelse return error.FrameAllocNoMem;
+    const payload = try mod.data(*Payload);
+    const idx: usize = bitmaps.bitmapAllocContig(
+        payload.bitmap,
+        cnt,
+    ) orelse return error.NoVirtFrames;
     return @alignCast(
-        (info.start + (idx * paging.page_size))[0 .. cnt * paging.page_size],
+        (payload.start + (idx * paging.page_size))[0 .. cnt * paging.page_size],
     );
 }
 
 /// Frees a page-sized chunk of virtual memory, not modifying its page mapping.
 pub fn frameFree(start: usize) void {
-    const info: FrameAllocInfo = frame_alloc_global orelse return;
-    const idx = (start - @intFromPtr(info.start)) / paging.page_size;
-    bitmaps.bitmapSet(info.bitmap, idx, false);
+    const payload: *Payload = @ptrCast(@alignCast(mod.payload.?)); // Page being freed must be allocated, so module must be inited.
+    const idx = (start - @intFromPtr(payload.start)) / paging.page_size;
+    bitmaps.bitmapSet(payload.bitmap, idx, false);
 }
 
-fn init() modules.ModuleInitError!void {
-    const trampoline_region = elf.trampoline_region.?;
-    const start: usize = std.mem.Alignment.forward(paging.page_align, trampoline_region.vaddr + trampoline_region.pg_cnt * paging.page_size);
+fn init() modules.InitError!void {
+    const virtual = @import("../virtual.zig");
+    const trampoline_region = try elf.mod.data(*virtual.Vregion);
+    const start: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(
+        trampoline_region.vaddr + trampoline_region.pg_cnt * paging.page_size,
+    ));
     const end: usize = start + paging.page_size * 4096;
     const bitmap_cnt: usize = ((end - start) / paging.page_size) / 8;
-    const allocator = heap.allocator() catch return error.ModuleInitFailure;
-    const bitmap: []bitmaps.BitmapUnit = allocator.alloc(bitmaps.BitmapUnit, bitmap_cnt) catch return error.ModuleInitFailure;
+    const allocator = try heap.mod.data(*std.mem.Allocator);
+    const bitmap: []bitmaps.BitmapUnit = allocator.alloc(
+        bitmaps.BitmapUnit,
+        bitmap_cnt,
+    ) catch return error.InitializationFailure;
     @memset(bitmap, 0);
-    frame_alloc_global = .{
+
+    const Static = struct {
+        var payload: Payload = undefined;
+    };
+    Static.payload = .{
         .start = @ptrFromInt(start),
         .bitmap = bitmap,
     };
+    mod.payload = &Static.payload;
 }
 
 /// The frames module, which initializes an allocator for allocating virtual
@@ -64,5 +75,4 @@ fn init() modules.ModuleInitError!void {
 pub var mod: modules.Module = .{
     .name = "frames",
     .init = init,
-    .deps = &.{ &paging.mod, &heap.mod, &elf.mod },
 };

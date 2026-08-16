@@ -77,20 +77,36 @@ const IdentifyInfo = extern struct {
     unused5: [152]u16,
 };
 
-fn identify(main: io.Port, control: io.Port, select: DriveSel) ?IdentifyInfo {
-    io.out(8, main + @intFromEnum(RegisterMain.drive_select), @intFromEnum(select));
+const modules = @import("../../modules.zig");
+
+const CommandError = virtual.MapError || modules.InitError;
+
+fn identify(
+    main: io.Port,
+    control: io.Port,
+    select: DriveSel,
+) CommandError!?IdentifyInfo {
+    io.out(
+        8,
+        main + @intFromEnum(RegisterMain.drive_select),
+        @intFromEnum(select),
+    );
     io.out(8, main + @intFromEnum(RegisterMain.sector_count), 0);
     io.out(8, main + @intFromEnum(RegisterMain.lba_lo), 0);
     io.out(8, main + @intFromEnum(RegisterMain.lba_mid), 0);
     io.out(8, main + @intFromEnum(RegisterMain.lba_hi), 0);
-    io.out(8, main + @intFromEnum(RegisterMain.status_cmd), @intFromEnum(Command.identify));
+    io.out(
+        8,
+        main + @intFromEnum(RegisterMain.status_cmd),
+        @intFromEnum(Command.identify),
+    );
     if (io.in(8, control) == 0) {
         return null;
     }
     while (@as(RegStatus, @bitCast(
         io.in(8, control),
     )).bsy) {
-        scheduler.preempt();
+        try scheduler.preempt();
     }
     if (io.in(8, main + @intFromEnum(RegisterMain.lba_mid)) != 0) {
         return null;
@@ -105,7 +121,7 @@ fn identify(main: io.Port, control: io.Port, select: DriveSel) ?IdentifyInfo {
         }
         break :poll !status.drq;
     }) {
-        scheduler.preempt();
+        try scheduler.preempt();
     }
     var res: [256]u16 = undefined;
     for (&res) |*field| {
@@ -130,7 +146,6 @@ const Channel = struct {
     control: io.Port,
     busmaster_reg: pci.PCIDev.BAR,
     prdt: []PRD,
-    prdt_phys: u32,
     master: ?Drive,
     slave: ?Drive,
     int_flag: bool,
@@ -144,7 +159,7 @@ fn init_channel(
         primary,
         secondary,
     },
-) virtual.MapError!void {
+) CommandError!void {
     const prdt_phys: [*]align(paging.page_size) u8 = try pmm.pmmAllocLow(prdt_size);
     const prdt_virt: []PRD = @ptrCast(@alignCast(try virtual.mapPhysObj(
         prdt_phys[0..prdt_size],
@@ -161,18 +176,17 @@ fn init_channel(
         .busmaster_reg = busmaster_reg,
         .master = null,
         .slave = null,
-        .prdt_phys = prdt_phys,
         .prdt = prdt_virt,
         .int_flag = false,
     };
-    channel.busmaster_reg.write(32, 0x4, prdt_phys);
-    const master_info = identify(main, control, .master);
+    channel.busmaster_reg.write(32, 0x4, @intCast(@intFromPtr(prdt_phys)));
+    const master_info = try identify(main, control, .master);
     if (master_info) |info| {
         channel.master = .{ .info = info };
         var meow: [512]u8 = @splat(0);
-        try do_dma(&channel, .master, &meow, .read, 123);
+        do_dma(&channel, .master, &meow, .read, 123) catch unreachable;
     }
-    const slave_info = identify(main, control, .slave);
+    const slave_info = try identify(main, control, .slave);
     if (slave_info) |info| {
         channel.slave = .{ .info = info };
     }
@@ -201,15 +215,15 @@ fn fill_prdt(channel: *Channel, batch_p: []u8) virtual.MapError!void {
         const seg = batch[0..seg_len];
         batch = batch[seg_len..];
         if (channel.prdt[i].buf_paddr == 0) {
-            channel.prdt[i].buf_paddr = try pmm.pmmAllocLow(
+            channel.prdt[i].buf_paddr = @intCast(@intFromPtr(try pmm.pmmAllocLow(
                 std.mem.Alignment.forward(paging.page_align, seg_len),
-            );
+            )));
         }
         const pg_cnt = (seg_len + paging.page_size - 1) / paging.page_size;
         const bfr = try frames.frameAllocContig(pg_cnt);
         const vr: virtual.Vregion = .{
-            .paddr = channel.prdt[i].buf_paddr,
-            .vaddr = @intFromPtr(bfr.ptr),
+            .paddr = @ptrFromInt(channel.prdt[i].buf_paddr),
+            .vaddr = bfr.ptr,
             .pg_cnt = pg_cnt,
             .flags = .{},
             .next = null,
@@ -230,7 +244,7 @@ fn send_dma_cmds(
     sector_count_p: u16,
     dir: TransferDir,
     lba: u48,
-) void {
+) modules.InitError!void {
     channel.busmaster_reg.write(8, 0x0, @bitCast(@as(
         BusmasterCommandByte,
         .{ .enable = false, .dir = dir },
@@ -346,7 +360,7 @@ fn send_dma_cmds(
         while (!@atomicLoad(bool, &channel.int_flag, .unordered)) {
             // TODO: take this task off of the queue and store it
             // somewhere else. The ISR will push it back.
-            scheduler.preempt();
+            try scheduler.preempt();
         }
     }
     console.print("DMA finished.\n", .{});
@@ -364,7 +378,7 @@ fn do_dma(
     data_p: []u8,
     dir: TransferDir,
     lba_p: u48,
-) virtual.MapError!void {
+) CommandError!void {
     channel.int_flag = false;
     var data = data_p;
     var lba = lba_p;
@@ -376,7 +390,7 @@ fn do_dma(
         data = data[batch_len..];
 
         try fill_prdt(channel, batch);
-        send_dma_cmds(
+        try send_dma_cmds(
             channel,
             sel,
             @intCast(batch_len / sector_size),
@@ -430,52 +444,51 @@ fn init(dev: *pci.PCIDev) void {
     };
     const prog_if: ATAProgIf = @bitCast(dev.class.prog_if);
     _ = init: {
+        const active_cpu = (cpu.getActiveCPU() catch |err| break :init err).*;
         if (!prog_if.primary_pci) {
             const vec_primary = (interrupts.alloc(isr_primary) catch |err| break :init err) orelse return; // TODO: fall back to polling
-            if (ioapic.alloc(
+            _ = ioapic.alloc(
                 1 << 14,
                 vec_primary,
                 .active_high,
                 .edge_sensitive,
-                cpu.getActiveCPU().*,
-            )) |_| {
-                _ = init_channel(
-                    0x1f0,
-                    0x3f6,
-                    busmaster_reg.enhance(8) catch |err| break :init err,
-                    .primary,
-                ) catch |err| break :init err;
-            }
+                active_cpu,
+            ) catch |err| break :init err;
+            _ = init_channel(
+                0x1f0,
+                0x3f6,
+                busmaster_reg.enhance(8) catch |err| break :init err,
+                .primary,
+            ) catch |err| break :init err;
         }
         if (!prog_if.secondary_pci) {
             const vec_secondary = (interrupts.alloc(isr_primary) catch |err| break :init err) orelse return; // TODO: fall back to polling
-            if (ioapic.alloc(
+            _ = ioapic.alloc(
                 1 << 15,
                 vec_secondary,
                 .active_high,
                 .edge_sensitive,
-                cpu.getActiveCPU().*,
-            )) |_| {
-                const busmaster_secondary: pci.PCIDev.BARRaw = .{
-                    .idx = busmaster_reg.idx,
-                    .data = switch (busmaster_reg.data) {
-                        .io => |data_io| .{
-                            .io = .{ .port = data_io.port + 0x8 },
-                        },
-                        .mem => |data_mem| .{ .mem = .{
-                            .paddr = data_mem.paddr + 0x8,
-                            .prefetchable = data_mem.prefetchable,
-                            .mem_type = data_mem.mem_type,
-                        } },
+                active_cpu,
+            ) catch |err| break :init err;
+            const busmaster_secondary: pci.PCIDev.BARRaw = .{
+                .idx = busmaster_reg.idx,
+                .data = switch (busmaster_reg.data) {
+                    .io => |data_io| .{
+                        .io = .{ .port = data_io.port + 0x8 },
                     },
-                };
-                _ = init_channel(
-                    0x170,
-                    0x376,
-                    busmaster_secondary.enhance(8) catch |err| break :init err,
-                    .primary,
-                ) catch |err| break :init err;
-            }
+                    .mem => |data_mem| .{ .mem = .{
+                        .paddr = data_mem.paddr + 0x8,
+                        .prefetchable = data_mem.prefetchable,
+                        .mem_type = data_mem.mem_type,
+                    } },
+                },
+            };
+            _ = init_channel(
+                0x170,
+                0x376,
+                busmaster_secondary.enhance(8) catch |err| break :init err,
+                .primary,
+            ) catch |err| break :init err;
         }
     } catch |err| @import("std").debug.panic(
         "critical system error while initializing ATA: {s}",

@@ -72,13 +72,9 @@ pub const MADTEntryInterruptOverride = extern struct {
     flags: u16,
 };
 
-pub const MADTError = error{
-    NoMADT,
-} || std.mem.Allocator.Error;
-
-var madt_global: ?*MADT = null;
-
 var overrides: ?std.ArrayList(*align(1) const MADTEntryInterruptOverride) = null;
+
+const MADTError = std.mem.Allocator.Error || modules.InitError;
 
 pub fn findMADTEntries(
     res_type: type,
@@ -90,7 +86,8 @@ pub fn findMADTEntries(
         @compileError("invalid MADT entry struct: first field should be a MADTEntryType");
     }
     const entry_type = struct_info.field_attrs[0].defaultValue(field_type);
-    const madt: *MADT = madt_global orelse return error.NoMADT;
+
+    const madt = try mod.data(*MADT);
     var entry: *const MADTEntry = &madt.first_entry;
     var entries = std.ArrayList(*align(1) const res_type).empty;
     while (@intFromPtr(entry) < @intFromPtr(madt) + madt.header.length) {
@@ -102,9 +99,9 @@ pub fn findMADTEntries(
     return entries;
 }
 
-fn init() modules.ModuleInitError!void {
-    madt_global = @ptrCast(
-        acpi.findSDT("APIC") orelse return error.ModuleUnsupported,
+fn init() modules.InitError!void {
+    mod.payload = @ptrCast(
+        try acpi.findSDT("APIC") orelse return error.Unsupported,
     );
 }
 
@@ -124,5 +121,4 @@ pub fn redirectionInfo(legacy_irq: u8, gpa: std.mem.Allocator) MADTError!?u32 {
 pub var mod: modules.Module = .{
     .name = "madt",
     .init = init,
-    .deps = &.{&acpi.mod},
 };

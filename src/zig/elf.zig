@@ -64,8 +64,7 @@ fn init() modules.InitError!void {
         .paddr = start_ptr,
         .pg_cnt = (end_res - start_res + paging.page_size - 1) / paging.page_size,
     };
-    paging.registerRegion(&trampoline_region);
-    mod.payload = @ptrCast(&trampoline_region);
+    mod.payload = &trampoline_region;
 }
 
 /// The elf module, which parses information about the prekernel ELF file.

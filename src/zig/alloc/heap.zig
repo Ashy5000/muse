@@ -3,6 +3,7 @@ const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");
 const paging = @import("../arch.zig").paging;
 const global = @import("../global.zig");
+const pmm = @import("../alloc/pmm.zig");
 const elf = @import("../elf.zig");
 
 const min_chunk_size_log: usize = 5;
@@ -37,7 +38,7 @@ fn heapSbrk(heap: *Heap, inc: usize) ?[*]u8 {
 }
 
 fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: usize) ?[*]u8 {
-    const heap: *Heap = @alignCast(@ptrCast(heap_opaque));
+    const heap: *Heap = @ptrCast(@alignCast(heap_opaque));
     const size: usize = @max(len + chunk_overhead, min_chunk_size);
     const t_idx: usize = @bitSizeOf(usize) - 1 - @clz(size) - min_chunk_size_log;
     var previous_chunk: ?*align(1) Chunk = null;
@@ -97,7 +98,7 @@ fn alloc(heap_opaque: *anyopaque, len: usize, alignment: std.mem.Alignment, _: u
 }
 
 fn free(heap_opaque: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
-    const heap: *Heap = @alignCast(@ptrCast(heap_opaque));
+    const heap: *Heap = @ptrCast(@alignCast(heap_opaque));
     var ch: *align(1) Chunk = @ptrCast(memory.ptr - chunk_overhead);
     const s_ch: *align(1) Chunk = @ptrFromInt(@intFromPtr(ch) + ch.size);
     if (@intFromPtr(s_ch) + @sizeOf(Chunk) <= @intFromPtr(heap.limit)) {
@@ -150,9 +151,10 @@ var allocator: std.mem.Allocator = .{
 };
 
 fn init() modules.InitError!void {
-    const region = try elf.mod.data(virtual.Vregion);
+    const region = try elf.mod.data(*virtual.Vregion);
+    const info = (try pmm.mod.data(*pmm.Payload)).info;
     global_heap = .{
-        .limit = @ptrFromInt(@intFromPtr(global.info) + global.info.size + 1),
+        .limit = @ptrFromInt(@intFromPtr(info) + info.size + 1),
         .max_limit = @ptrCast(region.vaddr),
         .size = 0,
         .free = 0,
@@ -162,7 +164,7 @@ fn init() modules.InitError!void {
         heapSbrk(&global_heap, @sizeOf(usize)).?,
     );
     prev_size.* = 0;
-    mod.payload = @ptrCast(&allocator);
+    mod.payload = &allocator;
 }
 
 /// The heap module, which initializes a heap for the kernel.

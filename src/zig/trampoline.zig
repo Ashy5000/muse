@@ -17,7 +17,7 @@ pub const panic = std.debug.FullPanic(panic_mod.crashed);
 var task: scheduler.Task = undefined;
 
 fn meow() void {
-    const allocator = (@import("alloc/heap.zig").mod.data(std.mem.Allocator) catch unreachable).*;
+    const allocator = (@import("alloc/heap.zig").mod.data(*std.mem.Allocator) catch unreachable).*;
     tick.sleep(allocator, 3e12) catch unreachable;
     console.print("meow", .{});
     while (true) {
@@ -35,7 +35,7 @@ export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_ma
     pci.init() catch unreachable;
 
     var ctx = contextSwitch.createKernelTask(meow) catch unreachable;
-    scheduler.push(&ctx);
+    scheduler.push(&ctx) catch unreachable;
 
     console.print("Initialization complete.\n", .{});
 

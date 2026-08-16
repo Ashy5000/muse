@@ -13,7 +13,7 @@ pub const DefBlockHeader = extern struct {
     creator_rev: u32,
 };
 
-pub const SDTBackError = @import("../alloc/frames.zig").FrameAllocError || @import("../alloc/pmm.zig").PMMError;
+pub const SDTBackError = @import("../alloc/frames.zig").FrameAllocError || @import("../alloc/pmm.zig").AllocError;
 
 /// Maps a SDT in physical memory to one in virtual memory.
 pub fn backSDT(ptr: *DefBlockHeader) SDTBackError!*DefBlockHeader {
@@ -21,7 +21,10 @@ pub fn backSDT(ptr: *DefBlockHeader) SDTBackError!*DefBlockHeader {
     const ptr_slice: []u8 = ptr_multi[0..@sizeOf(DefBlockHeader)];
     const header_slice: []u8 = try virtual.mapPhysObj(ptr_slice, .{});
     const header: *DefBlockHeader = @ptrCast(@alignCast(header_slice.ptr));
-    const sdt_slice: []u8 = try virtual.mapPhysObj(ptr_multi[0..header.length], .{});
+    const sdt_slice: []u8 = try virtual.mapPhysObj(
+        ptr_multi[0..header.length],
+        .{},
+    );
     virtual.freeMappedObj(header_slice);
     const table: *DefBlockHeader = @ptrCast(@alignCast(sdt_slice.ptr));
     return table;

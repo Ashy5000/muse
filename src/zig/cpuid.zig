@@ -16,8 +16,8 @@ fn getCPUVendorID() [12]u8 {
         : [fst] "={ebx}" (fst),
           [snd] "={edx}" (snd),
           [lst] "={ecx}" (lst),
-        :: .{ .eax = true }
-    );
+        :
+        : .{ .eax = true });
     const res_32: [3]u32 = .{ fst, snd, lst };
     return @bitCast(res_32);
 }
@@ -106,8 +106,8 @@ fn getCPUFeatures() CPUFeatures {
         : [ebx] "={ebx}" (ebx),
           [ecx] "={ecx}" (ecx),
           [edx] "={edx}" (edx),
-        :: .{ .eax = true }
-    );
+        :
+        : .{ .eax = true });
     const concat: [3]u32 = .{ ebx, ecx, edx };
     return @bitCast(concat);
 }
@@ -189,8 +189,8 @@ fn getCPUExtendedInfo() CPUExtendedInfo {
         \\ cpuid
         : [ecx] "={ecx}" (ecx),
           [edx] "={edx}" (edx),
-        :: .{ .eax = true }
-    );
+        :
+        : .{ .eax = true });
     const concat: [2]u32 = .{ ecx, edx };
     return @bitCast(concat);
 }
@@ -204,7 +204,7 @@ fn init() modules.InitError!void {
         .extended_info = getCPUExtendedInfo(),
     };
 
-    mod.payload = @ptrCast(&info);
+    mod.payload = &info;
 }
 
 pub var mod: modules.Module = .{

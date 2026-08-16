@@ -129,48 +129,62 @@ pub const IOAPIC = struct {
     }
 };
 
+pub const AllocError = error{NoAvailableLines} || modules.InitError;
+
 pub fn alloc(
     mask: u32,
     vec: interrupts.Vec,
     polarity: IOAPIC.Polarity,
     trigger_mode: IOAPIC.TriggerMode,
     target: cpu.CPU,
-) ?std.math.Log2Int(u32) {
-    for (0..ioapics.items.len) |i| {
-        if (ioapics.items[i].alloc(mask)) |irq| {
-            ioapics.items[i].map(irq, vec, polarity, trigger_mode, target);
+) AllocError!std.math.Log2Int(u32) {
+    const ioapics = try mod.data(*[]IOAPIC);
+    for (ioapics.*) |*ioapic| {
+        if (ioapic.alloc(mask)) |irq| {
+            ioapic.map(irq, vec, polarity, trigger_mode, target);
             return irq;
         }
     }
-    return null;
+    return error.NoAvailableLines;
 }
 
-var ioapics = std.ArrayList(IOAPIC).empty;
-
-fn init() modules.ModuleInitError!void {
-    const gpa = heap.allocator() catch return error.ModuleInitFailure;
+fn init() modules.InitError!void {
+    const gpa = (try heap.mod.data(*std.mem.Allocator)).*;
     var ioapic_entries = madt.findMADTEntries(
         madt.MADTEntryIOAPIC,
         gpa,
-    ) catch return error.ModuleInitFailure;
+    ) catch return error.InitializationFailure;
     defer ioapic_entries.deinit(gpa);
-    for (ioapic_entries.items) |entry| {
-        const regs_phys: []u8 = @as([*]u8, @ptrFromInt(entry.addr))[0 .. 5 * @sizeOf(u32)];
+
+    const Static = struct {
+        var payload: []IOAPIC = undefined;
+    };
+    Static.payload = gpa.alloc(
+        IOAPIC,
+        ioapic_entries.items.len,
+    ) catch return error.CriticalSystemFailure;
+
+    for (ioapic_entries.items, 0..ioapic_entries.items.len) |entry, i| {
+        const regs_phys: []u8 = @as(
+            [*]u8,
+            @ptrFromInt(entry.addr),
+        )[0 .. 5 * @sizeOf(u32)];
         const regs_virt: []u8 = virtual.mapPhysObj(
             regs_phys,
             .{ .cache_mode = .Uncacheable },
-        ) catch return error.ModuleInitFailure;
+        ) catch return error.InitializationFailure;
         var ioapic: IOAPIC = undefined;
-        ioapic.registers = @alignCast(@ptrCast(regs_virt.ptr));
+        ioapic.registers = @ptrCast(@alignCast(regs_virt.ptr));
         ioapic.base = @intCast(entry.base);
         ioapic.detect();
         console.print("I/O APIC: {}.\n", .{ioapic});
-        ioapics.append(gpa, ioapic) catch return error.ModuleInitFailure;
+        Static.payload[i] = ioapic;
     }
+
+    mod.payload = @ptrCast(&Static.payload);
 }
 
 pub var mod: modules.Module = .{
     .name = "ioapic",
     .init = init,
-    .deps = &.{ &madt.mod, &heap.mod, &virtual.mod },
 };

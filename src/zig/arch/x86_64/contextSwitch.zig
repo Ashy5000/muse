@@ -31,7 +31,7 @@ pub fn createKernelTask(
     entry_point: *const fn () void,
 ) virtual.MapError!scheduler.Task {
     const stack_cap = 0x10000;
-    const stack_phys = try pmm.pmmAlloc(stack_cap)[0..stack_cap];
+    const stack_phys = (try pmm.pmmAlloc(stack_cap))[0..stack_cap];
     const stack = try virtual.mapPhysObj(stack_phys, .{});
     // Return address plus 6 preserved registers
     const stack_size = 7 * @sizeOf(usize);

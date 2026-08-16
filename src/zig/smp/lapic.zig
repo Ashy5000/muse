@@ -76,9 +76,7 @@ pub const LAPICRegisters = extern struct {
     rsvd4: u32 align(16),
 };
 
-pub var lapic_regs: ?*volatile LAPICRegisters = null;
-
-fn enableAPIC() virtual.MapError!void {
+fn enableAPIC() (virtual.MapError || modules.InitError)!void {
     const APICBaseMSR = packed struct {
         rsvd0: u8,
         bsp: bool,
@@ -89,62 +87,70 @@ fn enableAPIC() virtual.MapError!void {
 
     const apic_base_msr: msr.MSR = 0x1b;
 
-    var base: APICBaseMSR = @bitCast(msr.getMSR(apic_base_msr));
+    var base: APICBaseMSR = @bitCast(try msr.getMSR(apic_base_msr));
     base.enable = true;
-    msr.setMSR(apic_base_msr, @bitCast(base));
+    try msr.setMSR(apic_base_msr, @bitCast(base));
     const base_ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(base.addr << 12)));
     console.print("APIC register space at {*}.\n", .{base_ptr});
     const vbase_slice: []u8 = try virtual.mapPhysObj(
         base_ptr[0..@sizeOf(LAPICRegisters)],
         .{ .cache_mode = .Uncacheable },
     );
-    lapic_regs = @ptrCast(@alignCast(vbase_slice.ptr));
+    mod.payload = vbase_slice.ptr;
 }
 
-pub const LAPICInitError = error{LAPICUninit} || std.mem.Allocator.Error;
+pub const LAPICInitError = modules.InitError || std.mem.Allocator.Error;
 
 /// This function must be called once from each CPU. It initializes the local
 /// APIC for that core specifically, as compared to the boot module which sets
 /// up and enables APIC functionality globally.
 pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
-    _ = lapic_regs orelse return error.LAPICUninit;
-    lapic_regs.?.spurious_int.apic_software_enable = true;
+    const lapic_regs = try mod.data(*volatile LAPICRegisters);
+    lapic_regs.spurious_int.apic_software_enable = true;
     try cpu.cpus.append(gpa, .{
-        .lapic_id = @intCast(lapic_regs.?.lapic_id),
+        .lapic_id = @intCast(lapic_regs.lapic_id),
         .queue = .{
             .sync_status = .available,
             .active = try gpa.create(scheduler.Task),
             .list = null,
         },
     });
-    lapic_regs.?.timer_initial_count = 0;
-    lapic_regs.?.task_priority = 0;
+    lapic_regs.timer_initial_count = 0;
+    lapic_regs.task_priority = 0;
 }
 
 pub fn eoi() void {
-    lapic_regs.?.eoi = 0;
+    // If an interrupt was triggered, the I/O APIC has to be initalized.
+    const lapic_regs = mod.data(*volatile LAPICRegisters) catch unreachable;
+    lapic_regs.eoi = 0;
 }
 
-fn init() modules.ModuleInitError!void {
-    if (!cpuid.cpu_features.?.apic) return error.ModuleUnsupported;
+fn init() modules.InitError!void {
+    if (!(try cpuid.mod.data(
+        *cpuid.Info,
+    )).features.apic) return error.Unsupported;
 
-    const gpa = heap.allocator() catch return error.ModuleInitFailure;
+    const gpa = (try heap.mod.data(*std.mem.Allocator)).*;
+    // TODO: same thing here
     var lapic_entries = madt.findMADTEntries(
         madt.MADTEntryLAPIC,
         gpa,
-    ) catch return error.ModuleInitFailure;
+    ) catch return error.InitializationFailure;
     defer lapic_entries.deinit(gpa);
     for (lapic_entries.items) |entry| {
         console.print("LAPIC: {}\n", .{entry.*});
     }
 
-    enableAPIC() catch return error.ModuleInitFailure;
+    // TODO: propagate module.InitError's.
+    enableAPIC() catch return error.InitializationFailure;
 
-    initLocalAPIC(gpa) catch unreachable;
+    initLocalAPIC(gpa) catch |err| switch (err) {
+        error.OutOfMemory => return error.CriticalSystemFailure,
+        else => unreachable, // Already inited
+    };
 }
 
 pub var mod: modules.Module = .{
     .name = "lapic",
     .init = init,
-    .deps = &.{ &madt.mod, &msr.mod, &pic.mod, &cpuid.mod },
 };

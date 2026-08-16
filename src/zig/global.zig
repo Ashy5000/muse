@@ -15,10 +15,11 @@ pub const CoreInfo = struct {
     size: usize,
 };
 
-pub var info: *allowzero align(paging.page_size) CoreInfo = @ptrFromInt(0);
+const info: *allowzero align(paging.page_size) CoreInfo = @ptrFromInt(0);
 
-fn init() modules.ModuleInitError!void {
+fn init() modules.InitError!void {
     info.size = @sizeOf(CoreInfo);
+    mod.payload = info;
 }
 
 pub var mod: modules.Module = .{

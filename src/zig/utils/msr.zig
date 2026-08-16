@@ -3,11 +3,9 @@ const cpuid = @import("../cpuid.zig");
 
 pub const MSR = u32;
 
-const MSRError = error{Unsupported};
-
 pub fn setMSR(msr: MSR, data: u64) modules.InitError!void {
-    if (!(try cpuid.mod.data(cpuid.Info)).features.msr) {
-        return error.ModuleUnsupported;
+    if (!(try cpuid.mod.data(*cpuid.Info)).features.msr) {
+        return error.Unsupported;
     }
     asm volatile ("wrmsr"
         :
@@ -18,8 +16,8 @@ pub fn setMSR(msr: MSR, data: u64) modules.InitError!void {
 }
 
 pub fn getMSR(msr: MSR) modules.InitError!u64 {
-    if (!(try cpuid.mod.data(cpuid.Info)).features.msr) {
-        return error.ModuleUnsupported;
+    if (!(try cpuid.mod.data(*cpuid.Info)).features.msr) {
+        return error.Unsupported;
     }
     var lo: u32 = undefined;
     var hi: u32 = undefined;

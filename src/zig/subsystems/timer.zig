@@ -12,8 +12,7 @@ pub const IntervalPico = u64;
 pub const Driver = struct {
     pub const InitError = error{
         IDTFull,
-        NoAvailableIRQs,
-    } || virtual.MapError || modules.InitError;
+    } || virtual.MapError || modules.InitError || ioapic.AllocError;
 
     period: IntervalPico,
     init: *const fn () InitError!bool,
@@ -25,7 +24,7 @@ pub const tick_period: IntervalPico = 200_000_000_000; // 200 microseconds
 fn init() modules.InitError!void {
     for (drivers.drivers_timer) |t| {
         if (t.init() catch return error.InitializationFailure) {
-            mod.payload = @ptrCast(t);
+            mod.payload = t;
             t.period = tick_period;
             t.enable();
             return;

@@ -19,22 +19,22 @@ pub const Driver = struct {
     scrollGrid: *const fn (inc: usize) DrawError!void,
 };
 
-/// The primary system display, used for the system console.
-pub var display_primary: ?*Driver = null;
-
-fn init() modules.ModuleInitError!void {
+fn init() modules.InitError!void {
+    const Static = struct {
+        var display_primary: *Driver = undefined;
+    };
     for (drivers.drivers_display) |d| {
         if (d.init()) {
-            display_primary = d;
+            Static.display_primary = d;
+            mod.payload = Static.display_primary;
             return;
         }
     }
-    return error.ModuleUnsupported;
+    return error.Unsupported;
 }
 
 /// The display module, which initializes the subsystem for video output.
 pub var mod: modules.Module = .{
     .name = "display",
     .init = init,
-    .deps = &.{ &@import("../multiboot.zig").mod, &@import("../virtual.zig").mod },
 };

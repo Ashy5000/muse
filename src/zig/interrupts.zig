@@ -16,7 +16,9 @@ const exceptions: [2]*const ISRInfo = .{
 
 pub const Vec = std.math.Log2Int(u256);
 
-pub fn alloc(isr: ISR) modules.InitError!?Vec {
+pub const AllocError = error{NoAvailableIRQs} || modules.InitError;
+
+pub fn alloc(isr: ISR) AllocError!Vec {
     const bitmap = try mod.data_ref();
     for (0..256) |i| {
         const vec: Vec = @intCast(i);
@@ -29,7 +31,7 @@ pub fn alloc(isr: ISR) modules.InitError!?Vec {
             return vec;
         }
     }
-    return null;
+    return error.NoAvailableIRQs;
 }
 
 const heap = @import("alloc/heap.zig");
@@ -40,8 +42,8 @@ fn init() modules.InitError!u256 {
     }
     asm volatile ("sti");
 
-    // 32 for exceptions, 32 for PIC
-    return 0xffffffffffffffff;
+    // 32 for exceptions, 16 for PIC
+    return 0xffffffffffff;
 }
 
 pub var mod: modules.Module(u256) = .{

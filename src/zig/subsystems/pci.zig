@@ -38,6 +38,26 @@ pub const PCIDev = struct {
         return io.in(32, pci_config_data);
     }
 
+    fn writeConfigSpace(dev: *const PCIDev, offset: u8, reg: u32) void {
+        const PCIAddr = packed struct(u32) {
+            reg_offset: u8 = 0,
+            func: u3,
+            slot: u5,
+            bus: u8,
+            rsvd: u7 = 0,
+            enable: bool = true,
+        };
+
+        const addr: PCIAddr = .{
+            .bus = dev.bus,
+            .slot = dev.slot,
+            .func = dev.func,
+            .reg_offset = offset,
+        };
+        io.out(32, pci_config_addr, @bitCast(addr));
+        io.out(32, pci_config_data, reg);
+    }
+
     const PCIVendor = enum(u16) {
         intel = 0x8086,
         no_dev = 0xffff,
@@ -166,9 +186,9 @@ pub const PCIDev = struct {
         io: io.Port,
 
         pub fn write(
-            bar: *BAR,
+            bar: *const BAR,
             comptime bits: u16,
-            offset: usize,
+            offset: u16,
             data: @Int(.unsigned, bits),
         ) void {
             switch (bar.*) {
@@ -179,7 +199,7 @@ pub const PCIDev = struct {
                     ).* = data;
                 },
                 .io => |data_io| {
-                    io.out(bits, data_io, data);
+                    io.out(bits, data_io + offset, data);
                 },
             }
         }
@@ -187,14 +207,14 @@ pub const PCIDev = struct {
         pub fn read(
             bar: *const BAR,
             comptime bits: u16,
-            offset: usize,
+            offset: u16,
         ) @Int(.unsigned, bits) {
             return switch (bar.*) {
                 .mem => |data_mem| @as(
                     *@Int(.unsigned, bits),
                     @ptrCast(&data_mem[offset]),
                 ).*,
-                .io => |data_io| io.in(bits, data_io),
+                .io => |data_io| io.in(bits, data_io + offset),
             };
         }
     };
@@ -241,11 +261,11 @@ pub const PCIDev = struct {
     }
 
     const Status = packed struct {
-        rsvd_0: u3,
+        rsvd0: u3,
         int_status: bool,
         capabilities: bool,
         mhz_66: bool,
-        rsvd_1: bool,
+        rsvd1: bool,
         fast_back_to_back: bool,
         master_data_parity_error: bool,
         devsel_timing: u2,
@@ -258,6 +278,30 @@ pub const PCIDev = struct {
 
     fn getStatus(dev: PCIDev) Status {
         return @bitCast(@as(u16, @truncate(dev.readConfigSpace(0x4) >> 16)));
+    }
+
+    pub const Command = packed struct(u16) {
+        io_space: bool,
+        mem_space: bool,
+        bus_master: bool,
+        special_cycles: bool,
+        mem_write_invalidate: bool,
+        vga_palette_snoop: bool,
+        parity_error_response: bool,
+        rsvd0: u1,
+        serr_enable: bool,
+        fast_back_to_back: bool,
+        interrupt_disable: bool,
+        rsvd1: u5,
+    };
+
+    pub fn getCommand(dev: PCIDev) Command {
+        return @bitCast(@as(u16, @truncate(dev.readConfigSpace(0x4))));
+    }
+
+    pub fn setCommand(dev: PCIDev, cmd: Command) void {
+        const reg = (dev.readConfigSpace(0x4) & 0xffff) | @as(u16, @bitCast(cmd));
+        dev.writeConfigSpace(0x4, reg);
     }
 
     fn findCapability(dev: PCIDev, id: u8) ?u8 {

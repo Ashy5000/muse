@@ -6,13 +6,12 @@ const ioapic = @import("../drivers/ioapic.zig");
 const virtual = @import("../virtual.zig");
 const modules = @import("../modules.zig");
 const drivers = @import("../drivers.zig");
+const interrupts = @import("../interrupts.zig");
 
 pub const IntervalPico = u64;
 
 pub const Driver = struct {
-    pub const InitError = error{
-        IDTFull,
-    } || virtual.MapError || modules.InitError || ioapic.AllocError;
+    pub const InitError = interrupts.AllocError || virtual.MapError || modules.InitError || ioapic.AllocError;
 
     period: IntervalPico,
     init: *const fn () InitError!bool,

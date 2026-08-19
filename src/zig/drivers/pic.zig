@@ -1,22 +1,23 @@
-const modules = @import("../modules.zig");
 const io = @import("../utils/io.zig");
 
 const pic1: io.Port = 0x20;
 const pic2: io.Port = 0xA0;
 const data_offset: io.Port = 0x1;
 
-var offset: ?u8 = null;
+pub const offset: u8 = 32;
 
-fn init(new_offset: u8) modules.ModuleInitError!void {
+var inited = false;
+
+fn init() void {
     const command_init: u8 = 0x11;
     io.out(8, pic1, command_init);
     io.wait();
     io.out(8, pic2, command_init);
     io.wait();
 
-    io.out(8, pic1 + data_offset, new_offset);
+    io.out(8, pic1 + data_offset, offset);
     io.wait();
-    io.out(8, pic2 + data_offset, new_offset + 0x10);
+    io.out(8, pic2 + data_offset, offset + 8);
     io.wait();
 
     const cascade_irq: u3 = 2;
@@ -31,22 +32,24 @@ fn init(new_offset: u8) modules.ModuleInitError!void {
     io.out(8, pic2 + data_offset, mode_8086);
     io.wait();
 
-    io.out(8, pic1 + data_offset, 0xFF);
-    io.out(8, pic2 + data_offset, 0xFF);
+    io.out(8, pic1 + data_offset, 0xfb);
+    io.out(8, pic2 + data_offset, 0xff);
 
-    offset = new_offset;
+    inited = true;
 }
 
-fn unmask(irq: u8) void {
-    const line: u5 = @intCast(irq - offset.?);
-    if (line < 16)
+pub fn unmask(irq: u4) void {
+    if (!inited) {
+        init();
+    }
+    if (irq < 8)
         io.out(
             8,
             pic1 + data_offset,
             io.in(
                 8,
                 pic1 + data_offset,
-            ) | (@as(u8, 1) << @as(u4, @intCast(line))),
+            ) & ~(@as(u8, 1) << @as(u3, @intCast(irq))),
         )
     else
         io.out(
@@ -55,11 +58,13 @@ fn unmask(irq: u8) void {
             io.in(
                 8,
                 pic2 + data_offset,
-            ) | (@as(u8, 1) << @as(u4, @intCast(line - 16))),
+            ) & ~(@as(u8, 1) << @as(u3, @intCast(irq - 8))),
         );
 }
 
-pub var mod: modules.Module = .{
-    .name = "PIC",
-    .init = init,
-};
+pub fn eoi(irq: u4) void {
+    const command_eoi: u8 = 0x20;
+    if (irq >= 8)
+        io.out(8, pic2, command_eoi);
+    io.out(8, pic1, command_eoi);
+}

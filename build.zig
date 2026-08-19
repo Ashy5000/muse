@@ -191,11 +191,9 @@ pub fn build(b: *std.Build) !void {
 
     const qemu_step = b.addSystemCommand(&.{info.vm});
     qemu_step.addArgs(&.{
-        "-device",
-        "nvme,serial=deadbeef,drive=nvm",
         "-drive",
     });
-    qemu_step.addPrefixedFileArg("format=raw,id=nvm,if=none,file=", disk);
+    qemu_step.addPrefixedFileArg("format=raw,file=", disk);
     qemu_step.addArg("-drive");
 
     const firmware_path = b.option(
@@ -218,7 +216,7 @@ pub fn build(b: *std.Build) !void {
         // "-debugcon",
         // "stdio",
         "-d",
-        "int,trace:ide*",
+        "trace:ide*,trace:x86_pic_interrupt,trace:ioapic*",
         "-smp",
         "2",
     });

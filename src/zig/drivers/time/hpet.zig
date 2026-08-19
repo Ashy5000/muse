@@ -124,7 +124,7 @@ fn init() timer.Driver.InitError!bool {
     if (sys_timer) |_| {} else {
         sys_timer = &registers.timers[0];
     }
-    const vec = try interrupts.alloc(hpet_tick) orelse return error.IDTFull;
+    const vec = try interrupts.alloc(hpet_tick);
     const irq = try ioapic.alloc(
         sys_timer.?.info.ioapic_routing_map,
         vec,

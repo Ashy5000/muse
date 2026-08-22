@@ -33,7 +33,7 @@ pub fn backSlice(s: []u8) BackError!void {
     const start: usize = @intFromPtr(s.ptr);
     var addr: usize = std.mem.Alignment.backward(paging.page_align, start);
     while (addr < start + s.len) : (addr += paging.page_size) {
-        if (!paging.getPageStatus(@ptrFromInt(addr))) {
+        if (paging.getPageMapping(@ptrFromInt(addr))) |_| {} else {
             try paging.mapPage(
                 @ptrFromInt(addr),
                 try pmm.pmmAlloc(paging.page_size),

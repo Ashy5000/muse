@@ -216,7 +216,7 @@ pub fn build(b: *std.Build) !void {
         // "-debugcon",
         // "stdio",
         "-d",
-        "trace:ide*,trace:x86_pic_interrupt,trace:ioapic*",
+        "int,trace:ide*,trace:ioapic*",
         "-smp",
         "2",
     });

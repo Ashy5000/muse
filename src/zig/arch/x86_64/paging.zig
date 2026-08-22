@@ -299,7 +299,7 @@ pub fn mapRegion(vr: *const virtual.Vregion) MapError!void {
     }
 }
 
-pub fn getPageStatus(addr: [*]align(page_size) u8) bool {
+pub fn getPageMapping(addr: [*]align(page_size) u8) ?[*]align(page_size) u8 {
     const vaddr: Vaddr = .{ .addr = @intFromPtr(addr) };
     const ptr_table: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
@@ -312,12 +312,10 @@ pub fn getPageStatus(addr: [*]align(page_size) u8) bool {
         },
     }).addr);
     const ptr_table_entry: PageEntry = ptr_table[vaddr.components.directory_ptr];
-    if (!ptr_table_entry.fields.present) {
-        return false;
-    }
-    if (ptr_table_entry.fields.size) {
-        return true;
-    }
+    if (!ptr_table_entry.fields.present) return null;
+    if (ptr_table_entry.fields.size)
+        return @ptrFromInt(ptr_table_entry.fields.addr_hi << 12);
+
     const directory: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
@@ -329,12 +327,10 @@ pub fn getPageStatus(addr: [*]align(page_size) u8) bool {
         },
     }).addr);
     const directory_entry: PageEntry = directory[vaddr.components.directory];
-    if (!directory_entry.fields.present) {
-        return false;
-    }
-    if (directory_entry.fields.size) {
-        return true;
-    }
+    if (!directory_entry.fields.present) return null;
+    
+    if (directory_entry.fields.size)
+        return @ptrFromInt(directory_entry.fields.addr_hi << 12);
     const table: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
         .components = .{
             .ext = maxInt(u16),
@@ -346,7 +342,8 @@ pub fn getPageStatus(addr: [*]align(page_size) u8) bool {
         },
     }).addr);
     const table_entry: PageEntry = table[vaddr.components.table];
-    return table_entry.fields.present;
+    if (!table_entry.fields.present) return null;
+    return @ptrFromInt(table_entry.fields.addr_hi << 12);
 }
 
 pub fn init() MapError!void {

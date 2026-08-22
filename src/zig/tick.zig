@@ -20,8 +20,6 @@ const TickError = std.mem.Allocator.Error || modules.InitError;
 
 pub fn sleep(gpa: std.mem.Allocator, time: timer.IntervalPico) TickError!void {
     const queue = &(try cpu.getActiveCPU()).queue;
-    @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .in_use, .monotonic);
-    defer @atomicStore(@TypeOf(queue.sync_status), &queue.sync_status, .available, .release);
     const sleeping: *SleepingTask = try sleep_pool.create(gpa);
     sleeping.* = .{
         .countdown = time,

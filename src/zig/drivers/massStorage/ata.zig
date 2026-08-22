@@ -150,7 +150,8 @@ const Channel = struct {
     prdt: []PRD,
     master: ?Drive,
     slave: ?Drive,
-    int_flag: bool,
+    active: ?DriveSel,
+    status: enum { Pending, Done, Failed },
 };
 
 fn initChannel(
@@ -181,7 +182,8 @@ fn initChannel(
         .master = null,
         .slave = null,
         .prdt = prdt_virt,
-        .int_flag = false,
+        .active = null,
+        .status = undefined,
     };
 
     // Software reset
@@ -191,20 +193,51 @@ fn initChannel(
 
     const master_info = try identify(main, control, .master);
     if (master_info) |info| {
-        console.print("Info: {}.\n", .{info});
         channel.master = .{ .info = info };
-        channel.busmaster_reg.write(8, 0x4, @truncate(@intFromPtr(prdt_phys)));
-        channel.busmaster_reg.write(8, 0x5, @truncate(@intFromPtr(prdt_phys) >> 4));
-        channel.busmaster_reg.write(8, 0x6, @truncate(@intFromPtr(prdt_phys) >> 8));
-        channel.busmaster_reg.write(8, 0x7, @truncate(@intFromPtr(prdt_phys) >> 12));
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.master, .prdt_lowest),
+            @truncate(@intFromPtr(prdt_phys)),
+        );
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.master, .prdt_low),
+            @truncate(@intFromPtr(prdt_phys) >> 8),
+        );
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.master, .prdt_high),
+            @truncate(@intFromPtr(prdt_phys) >> 16),
+        );
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.master, .prdt_highest),
+            @truncate(@intFromPtr(prdt_phys) >> 24),
+        );
     }
     const slave_info = try identify(main, control, .slave);
     if (slave_info) |info| {
         channel.slave = .{ .info = info };
-        channel.busmaster_reg.write(8, 0xc, @truncate(@intFromPtr(prdt_phys)));
-        channel.busmaster_reg.write(8, 0xd, @truncate(@intFromPtr(prdt_phys) >> 4));
-        channel.busmaster_reg.write(8, 0xe, @truncate(@intFromPtr(prdt_phys) >> 8));
-        channel.busmaster_reg.write(8, 0xf, @truncate(@intFromPtr(prdt_phys) >> 12));
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.slave, .prdt_lowest),
+            @truncate(@intFromPtr(prdt_phys)),
+        );
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.slave, .prdt_low),
+            @truncate(@intFromPtr(prdt_phys) >> 8),
+        );
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.slave, .prdt_high),
+            @truncate(@intFromPtr(prdt_phys) >> 16),
+        );
+        channel.busmaster_reg.write(
+            8,
+            getBusmasterOffset(.slave, .prdt_highest),
+            @truncate(@intFromPtr(prdt_phys) >> 24),
+        );
     }
     switch (which) {
         .primary => channel_primary = channel,
@@ -213,6 +246,22 @@ fn initChannel(
 }
 
 const TransferDir = enum(u1) { write, read };
+
+const RegisterBusmaster = enum(u16) {
+    command = 0,
+    status = 2,
+    prdt_lowest = 4,
+    prdt_low = 5,
+    prdt_high = 6,
+    prdt_highest = 7,
+};
+
+inline fn getBusmasterOffset(select: DriveSel, reg: RegisterBusmaster) u16 {
+    return @intFromEnum(reg) + @as(u16, switch (select) {
+        .master => 0,
+        .slave => 8,
+    });
+}
 
 const BusmasterCommandByte = packed struct(u8) {
     enable: bool,
@@ -231,49 +280,155 @@ const BusmasterStatusByte = packed struct(u8) {
     simplex_only: bool = false,
 };
 
-fn fillPRDT(channel: *const Channel, batch_p: []u8) virtual.MapError!void {
-    const frames = @import("../../alloc/frames.zig");
+const frames = @import("../../alloc/frames.zig");
 
-    var batch = batch_p;
-
+fn fillPRDT(
+    channel: *const Channel,
+    data: []u8,
+    dir: TransferDir,
+) virtual.MapError!usize {
     var i: usize = 0;
-    while (batch.len > 0) : (i += 1) {
-        const seg_len: u16 = @truncate(@min(batch.len, 0x10000));
-        const seg = batch[0..seg_len];
-        batch = batch[seg_len..];
-        if (channel.prdt[i].buf_paddr == 0) {
-            channel.prdt[i].buf_paddr = @intCast(
-                @intFromPtr(try pmm.pmmAllocLow(
-                    std.mem.Alignment.forward(paging.page_align, seg_len),
-                )),
+
+    var last_paddr: ?u32 = null;
+
+    var offset: usize = 0;
+    var remaining_len: usize = data.len;
+
+    var remap_len: usize = 0;
+    const max_remap_len: usize = 0x10000;
+
+    var seg_len: u16 = @intCast(@min(remaining_len, paging.page_size));
+
+    const max_entry_cnt = paging.page_size / @sizeOf(PRD);
+
+    while (remaining_len > 0) : ({
+        offset += seg_len;
+        remaining_len -= seg_len;
+        if (i == max_entry_cnt) break;
+        if (i > max_entry_cnt) unreachable;
+        seg_len = @min(remaining_len, paging.page_size);
+    }) {
+        const paddr: usize = @intFromPtr(paging.getPageMapping(
+            @ptrFromInt(paging.page_align.backward(
+                @intFromPtr(data.ptr + offset),
+            )),
+        ) orelse std.debug.panic(
+            "unmapped buffer passed to ATA DMA operation",
+            .{},
+        )) + @intFromPtr(data.ptr + offset) % paging.page_size;
+        const paddr_low: u32 = @truncate(paddr);
+
+        const paddr_valid = paddr_low == paddr;
+
+        if (remap_len > max_remap_len) unreachable;
+
+        if (remap_len > 0 and (paddr_valid or remap_len == max_remap_len or i == max_entry_cnt - 1)) {
+            const pg_cnt = (remap_len + paging.page_size - 1) / remap_len;
+            const phys = try pmm.pmmAllocLow(pg_cnt * paging.page_size);
+            errdefer pmm.pmmFree(@intFromPtr(phys), pg_cnt * paging.page_size);
+            if (dir == .write) {
+                const virt = try frames.frameAllocContig(pg_cnt);
+                defer for (0..pg_cnt) |j| frames.frameFree(
+                    @intFromPtr(virt.ptr) + j * paging.page_size,
+                );
+                const vr: virtual.Vregion = .{
+                    .paddr = phys,
+                    .vaddr = virt.ptr,
+                    .pg_cnt = pg_cnt,
+                    .flags = .{},
+                };
+                try paging.mapRegion(&vr);
+                @memcpy(virt[0..remap_len], virt[offset - remap_len .. offset]);
+            }
+            channel.prdt[i] = .{
+                .buf_paddr = @intCast(@intFromPtr(phys)),
+                .transfer_size = @truncate(remap_len),
+                .last_entry = false,
+            };
+            i += 1;
+            last_paddr = null;
+        }
+        if (!paddr_valid) {
+            remap_len += seg_len;
+            continue;
+        }
+        if (last_paddr) |last| {
+            // 0 = 0x10000
+            if (last + paging.page_size == paddr and channel.prdt[i - 1].transfer_size > 0) {
+                channel.prdt[i - 1].transfer_size += seg_len;
+                continue;
+            }
+        }
+        channel.prdt[i] = .{
+            .transfer_size = seg_len,
+            .buf_paddr = paddr_low,
+            .last_entry = false,
+        };
+        last_paddr = paddr_low;
+        i += 1;
+    }
+    channel.prdt[i - 1].last_entry = true;
+    return data.len - remaining_len;
+}
+
+fn cleanupPRDT(
+    channel: *Channel,
+    data: []u8,
+    dir: TransferDir,
+) virtual.MapError!void {
+    var offset: usize = 0;
+    var i: usize = 0;
+    var prd: PRD = undefined;
+    while (offset < data.len) : ({
+        i += 1;
+        offset += prd.transfer_size;
+    }) {
+        const paddr: usize = @intFromPtr(paging.getPageMapping(
+            @ptrFromInt(paging.page_align.backward(
+                @intFromPtr(data.ptr + offset),
+            )),
+        ) orelse std.debug.panic(
+            "unmapped buffer passed to ATA DMA operation",
+            .{},
+        ));
+        if (i == paging.page_size / @sizeOf(PRD)) unreachable;
+        prd = channel.prdt[i];
+        if (paddr <= std.math.maxInt(u32)) continue;
+        if (dir == .read) {
+            const pg_cnt = (prd.transfer_size + paging.page_size - 1) / paging.page_size;
+            const virt = try frames.frameAllocContig(pg_cnt);
+            defer for (0..pg_cnt) |j| frames.frameFree(
+                @intFromPtr(virt.ptr) + j * paging.page_size,
+            );
+            const vr: virtual.Vregion = .{
+                .paddr = @ptrFromInt(paddr),
+                .vaddr = virt.ptr,
+                .pg_cnt = pg_cnt,
+                .flags = .{},
+            };
+            try paging.mapRegion(&vr);
+            @memcpy(
+                data[offset..][0..prd.transfer_size],
+                virt[0..prd.transfer_size],
             );
         }
-        const pg_cnt = (seg_len + paging.page_size - 1) / paging.page_size;
-        const bfr = try frames.frameAllocContig(pg_cnt);
-        const vr: virtual.Vregion = .{
-            .paddr = @ptrFromInt(channel.prdt[i].buf_paddr),
-            .vaddr = bfr.ptr,
-            .pg_cnt = pg_cnt,
-            .flags = .{},
-            .next = null,
-        };
-        try paging.mapRegion(&vr);
-        @memcpy(bfr[0..seg_len], seg);
-        virtual.freeMappedObj(bfr);
-        channel.prdt[i].transfer_size = seg_len;
-        channel.prdt[i].last_entry = batch.len == 0;
+        pmm.pmmFree(
+            prd.buf_paddr,
+            paging.page_align.forward(prd.transfer_size),
+        );
     }
 }
 
 const sector_size: usize = 512;
 
+const IOError = error{IOFailed};
+
 fn sendDMACommands(
-    channel: *const Channel,
+    channel: *Channel,
     sel: DriveSel,
-    sector_count_p: u16,
     dir: TransferDir,
-    lba: u48,
-) modules.InitError!void {
+    sector_num_p: usize,
+) (modules.InitError || IOError)!void {
     channel.busmaster_reg.write(8, 0x0, @bitCast(@as(
         BusmasterCommandByte,
         .{ .enable = false, .dir = dir },
@@ -285,37 +440,38 @@ fn sendDMACommands(
         .irq = true,
     })));
 
-    console.print("Set DMA transfer direction.\n", .{});
+    var i: usize = 0;
+    var sector_num = sector_num_p;
+    while (true) : (i += 1) {
+        const prd = channel.prdt[i];
+        const sector_count = prd.transfer_size / 512;
 
-    var sector_count = sector_count_p;
-    while (sector_count > 0) {
-        const seg_sector_count = @min(sector_count, 0x10000 / sector_size);
-        sector_count -= seg_sector_count;
-        if (lba < 0xfffffff and seg_sector_count < 0xff) {
+        if (sector_num < 0xfffffff and sector_count < 0xff) {
+            // LBA28 transfer
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.drive_select),
-                @intFromEnum(sel) + @as(u8, @intCast(lba >> 24)),
+                @intFromEnum(sel) + @as(u8, @intCast(sector_num >> 24)),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.sector_count),
-                @intCast(seg_sector_count),
+                @intCast(sector_count),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_lo),
-                @truncate(lba),
+                @truncate(sector_num),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_mid),
-                @truncate(lba >> 8),
+                @truncate(sector_num >> 8),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_hi),
-                @truncate(lba >> 16),
+                @truncate(sector_num >> 16),
             );
             io.out(
                 8,
@@ -328,6 +484,7 @@ fn sendDMACommands(
                 ),
             );
         } else {
+            // LBA48 transfer
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.drive_select),
@@ -336,42 +493,42 @@ fn sendDMACommands(
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.sector_count),
-                @intCast(@as(u16, seg_sector_count) >> @as(u4, 8)),
+                @intCast(@as(u16, sector_count) >> @as(u4, 8)),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_lo),
-                @truncate(lba >> 24),
+                @truncate(sector_num >> 24),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_mid),
-                @truncate(lba >> 32),
+                @truncate(sector_num >> 32),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_hi),
-                @truncate(lba >> 40),
+                @truncate(sector_num >> 40),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.sector_count),
-                @truncate(seg_sector_count),
+                @truncate(sector_count),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_lo),
-                @truncate(lba),
+                @truncate(sector_num),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_mid),
-                @truncate(lba >> 8),
+                @truncate(sector_num >> 8),
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.lba_hi),
-                @truncate(lba >> 16),
+                @truncate(sector_num >> 16),
             );
             io.out(
                 8,
@@ -385,26 +542,35 @@ fn sendDMACommands(
             );
         }
 
-        console.print("Enabling DMA...\n", .{});
+        channel.status = .Pending;
         channel.busmaster_reg.write(8, 0x0, @bitCast(@as(
             BusmasterCommandByte,
             .{ .enable = true, .dir = dir },
         )));
+        while (channel.status == .Pending) {}
 
-        while (!@atomicLoad(bool, &channel.int_flag, .unordered)) {
-            // TODO: take this task off of the queue and store it
-            // somewhere else. The ISR will push it back.
-            try scheduler.preempt();
+        if (channel.status == .Failed) {
+            return error.IOFailed;
+        }
+
+        sector_num += prd.transfer_size / 512;
+
+        if (prd.last_entry) {
+            break;
         }
     }
-    console.print("DMA finished.\n", .{});
 
-    var command_byte: BusmasterCommandByte = @bitCast(
-        channel.busmaster_reg.read(8, 0x0),
+    channel.busmaster_reg.write(
+        8,
+        0x0,
+        @bitCast(@as(BusmasterCommandByte, .{
+            .enable = false,
+            .dir = undefined,
+        })),
     );
-    command_byte.enable = false;
-    channel.busmaster_reg.write(8, 0x0, @bitCast(command_byte));
 }
+
+const DMAError = CommandError || IOError;
 
 fn doDMA(
     channel: *Channel,
@@ -412,27 +578,23 @@ fn doDMA(
     data_p: []u8,
     dir: TransferDir,
     lba_p: u48,
-) CommandError!void {
-    channel.int_flag = false;
+) DMAError!void {
     var data = data_p;
     var lba = lba_p;
     while (data.len > 0) {
-        const batch_len: u16 = @intCast(
-            @min(data.len, prdt_size / @sizeOf(PRD) * 0x10000),
-        );
-        const batch = data[0..batch_len];
-        data = data[batch_len..];
+        const batch_len: usize = try fillPRDT(channel, data, dir);
 
-        try fillPRDT(channel, batch);
         try sendDMACommands(
             channel,
             sel,
-            @intCast(batch_len / sector_size),
             dir,
-            lba,
+            lba + 1, // Starts at 1
         );
 
         lba += @intCast(batch_len / sector_size);
+
+        try cleanupPRDT(channel, data[0..batch_len], dir);
+        data = data[batch_len..];
     }
 }
 
@@ -442,33 +604,31 @@ var channel_secondary: ?Channel = null;
 const idt = @import("../../arch.zig").idt;
 const lapic = @import("../../smp/lapic.zig");
 
+fn handleISR(channel: *Channel) void {
+    const active = channel.active orelse return;
+    const status: BusmasterStatusByte = @bitCast(
+        channel.busmaster_reg.read(
+            8,
+            getBusmasterOffset(active, .status),
+        ),
+    );
+    if (!status.irq) {
+        return;
+    }
+    channel.status = if (status.err) .Failed else .Done;
+}
+
 fn isrPrimary() callconv(idt.int_callconv) void {
     defer lapic.eoi();
-    const channel = &(channel_primary orelse return);
-    const status: BusmasterStatusByte = @bitCast(
-        channel.busmaster_reg.read(8, 0x2),
-    );
-    console.print("Status: {}.\n", .{status});
-    // @atomicStore(
-    //     bool,
-    //     &channel.int_flag,
-    //     true,
-    //     .unordered,
-    // );
+    handleISR(&(channel_primary orelse return));
 }
 
 fn isrSecondary() callconv(idt.int_callconv) void {
     defer lapic.eoi();
-    @atomicStore(
-        bool,
-        &(channel_secondary orelse return).int_flag,
-        true,
-        .unordered,
-    );
+    handleISR(&(channel_secondary orelse return));
 }
 
 fn init(dev: *pci.PCIDev) void {
-    console.print("Dev: .{}.\n", .{dev.*});
     const ATAProgIf = packed struct {
         primary_pci: bool,
         primary_switch: bool,
@@ -510,12 +670,9 @@ fn init(dev: *pci.PCIDev) void {
                 busmaster_reg.enhance(8) catch |err| break :init err,
                 .primary,
             ) catch |err| break :init err;
-            var meow: [512]u8 = @splat(0xda);
-            doDMA(&channel_primary.?, .master, &meow, .read, 25) catch unreachable;
-            console.hexdump(&meow);
         }
         if (!prog_if.secondary_pci) {
-            const vec = interrupts.alloc(isrPrimary) catch |err| break :init err;
+            const vec = interrupts.alloc(isrSecondary) catch |err| break :init err;
             _ = ioapic.alloc(
                 1 << 14,
                 vec,
@@ -543,7 +700,7 @@ fn init(dev: *pci.PCIDev) void {
                 .primary,
             ) catch |err| break :init err;
         }
-    } catch |err| @import("std").debug.panic(
+    } catch |err| std.debug.panic(
         "critical system error while initializing ATA: {s}",
         .{@errorName(err)},
     );

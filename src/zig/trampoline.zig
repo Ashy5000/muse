@@ -16,12 +16,10 @@ pub const panic = std.debug.FullPanic(panic_mod.crashed);
 
 var task: scheduler.Task = undefined;
 
-fn meow() void {
-    const allocator = @import("alloc/heap.zig").mod.data() catch unreachable;
-    tick.sleep(allocator, 3e12) catch unreachable;
-    console.print("meow", .{});
+fn idle() void {
     while (true) {
-        asm volatile ("hlt");
+        scheduler.preempt() catch |err|
+            console.print("Idle task failed to context switch: {}.\n", .{err});
     }
 }
 
@@ -32,10 +30,11 @@ export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_ma
     interrupts.mod.load() catch unreachable;
     console.mod.load() catch unreachable;
     timer.mod.load() catch unreachable;
-    pci.init() catch unreachable;
 
-    var ctx = contextSwitch.createKernelTask(meow) catch unreachable;
-    scheduler.push(&ctx) catch unreachable;
+    var idle_task = contextSwitch.createKernelTask(idle) catch unreachable;
+    scheduler.push(&idle_task) catch unreachable;
+
+    pci.init() catch unreachable;
 
     console.print("Initialization complete.\n", .{});
 

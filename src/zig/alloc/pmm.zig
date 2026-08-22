@@ -153,7 +153,7 @@ pub const Payload = struct {
 };
 
 fn init() modules.InitError!Payload {
-    const info = try mmap.mod.data();
+    var info = try mmap.mod.data();
     for (0..info.region_cnt) |i| {
         var region = &info.regions[i];
         var tiers: [tier_cnt][]bitmaps.BitmapUnit = undefined;

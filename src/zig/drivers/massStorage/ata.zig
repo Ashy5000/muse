@@ -287,7 +287,7 @@ fn initDrive(
         .sel = sel,
     };
 
-    var node: vfs.Vnode = .{
+    const node: vfs.Vnode = .{
         .data = .{
             .file = .{
                 .payload = @ptrCast(payload),
@@ -296,9 +296,6 @@ fn initDrive(
         },
     };
     try root.data.directory.children.put("sda0", node);
-    var meow: [700]u8 = undefined;
-    node.data.file.transfer(&node, &meow, .read, 0x100050) catch unreachable;
-    console.hexdump(&meow);
 }
 
 fn initChannel(
@@ -561,7 +558,8 @@ fn sendDMACommands(
     channel: *Channel,
     sel: DriveSel,
     dir: TransferDir,
-    sector_num_p: usize,
+    sector_num: usize,
+    sector_count: usize,
 ) (modules.InitError || IOError)!void {
     channel.busmaster_reg.write(8, 0x0, @bitCast(@as(
         BusmasterCommandByte,
@@ -575,127 +573,115 @@ fn sendDMACommands(
     })));
 
     const lba_bits: u8 = 0xe0;
-    var i: usize = 0;
-    var sector_num = sector_num_p;
-    while (true) : (i += 1) {
-        const prd = channel.prdt[i];
-        const sector_count = prd.transfer_size / sector_size;
 
-        if (sector_num < 0xfffffff and sector_count < 0xff) {
-            // LBA28 transfer
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.drive_select),
-                @intFromEnum(sel) + @as(
-                    u8,
-                    @intCast(sector_num >> 24),
-                ) | lba_bits,
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.sector_count),
-                @intCast(sector_count),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_lo),
-                @truncate(sector_num),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_mid),
-                @truncate(sector_num >> 8),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_hi),
-                @truncate(sector_num >> 16),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.status_cmd),
-                @intFromEnum(
-                    if (dir == .read)
-                        Command.dma_28_read
-                    else
-                        Command.dma_28_write,
-                ),
-            );
-        } else {
-            // LBA48 transfer
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.drive_select),
-                @intFromEnum(sel) | lba_bits,
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.sector_count),
-                @intCast(@as(u16, @intCast(sector_count)) >> @as(u4, 8)),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_lo),
-                @truncate(sector_num >> 24),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_mid),
-                @truncate(sector_num >> 32),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_hi),
-                @truncate(sector_num >> 40),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.sector_count),
-                @truncate(sector_count),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_lo),
-                @truncate(sector_num),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_mid),
-                @truncate(sector_num >> 8),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.lba_hi),
-                @truncate(sector_num >> 16),
-            );
-            io.out(
-                8,
-                channel.main + @intFromEnum(RegisterMain.status_cmd),
-                @intFromEnum(
-                    if (dir == .read)
-                        Command.dma_48_read
-                    else
-                        Command.dma_48_write,
-                ),
-            );
-        }
+    if (sector_num < 0xfffffff and sector_count < 0xff) {
+        // LBA28 transfer
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.drive_select),
+            @intFromEnum(sel) + @as(
+                u8,
+                @intCast(sector_num >> 24),
+            ) | lba_bits,
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.sector_count),
+            @intCast(sector_count),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_lo),
+            @truncate(sector_num),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_mid),
+            @truncate(sector_num >> 8),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_hi),
+            @truncate(sector_num >> 16),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.status_cmd),
+            @intFromEnum(
+                if (dir == .read)
+                    Command.dma_28_read
+                else
+                    Command.dma_28_write,
+            ),
+        );
+    } else {
+        // LBA48 transfer
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.drive_select),
+            @intFromEnum(sel) | lba_bits,
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.sector_count),
+            @intCast(@as(u16, @intCast(sector_count)) >> @as(u4, 8)),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_lo),
+            @truncate(sector_num >> 24),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_mid),
+            @truncate(sector_num >> 32),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_hi),
+            @truncate(sector_num >> 40),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.sector_count),
+            @truncate(sector_count),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_lo),
+            @truncate(sector_num),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_mid),
+            @truncate(sector_num >> 8),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.lba_hi),
+            @truncate(sector_num >> 16),
+        );
+        io.out(
+            8,
+            channel.main + @intFromEnum(RegisterMain.status_cmd),
+            @intFromEnum(
+                if (dir == .read)
+                    Command.dma_48_read
+                else
+                    Command.dma_48_write,
+            ),
+        );
+    }
 
-        channel.status = .Pending;
-        channel.busmaster_reg.write(8, 0x0, @bitCast(@as(
-            BusmasterCommandByte,
-            .{ .enable = true, .dir = dir },
-        )));
-        while (channel.status == .Pending) {}
+    channel.status = .Pending;
+    channel.busmaster_reg.write(8, 0x0, @bitCast(@as(
+        BusmasterCommandByte,
+        .{ .enable = true, .dir = dir },
+    )));
+    while (channel.status == .Pending) {}
 
-        if (channel.status == .Failed) {
-            return error.IOFailed;
-        }
-
-        sector_num += prd.transfer_size / sector_size;
-
-        if (prd.last_entry) {
-            break;
-        }
+    if (channel.status == .Failed) {
+        return error.IOFailed;
     }
 
     channel.busmaster_reg.write(
@@ -728,6 +714,7 @@ fn doDMA(
             sel,
             dir,
             lba,
+            increment.bytes / sector_size,
         );
 
         lba += @intCast(increment.bytes / sector_size);

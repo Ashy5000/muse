@@ -154,6 +154,153 @@ const Channel = struct {
     status: enum { Pending, Done, Failed },
 };
 
+const vfs = @import("../../vfs.zig");
+const heap = @import("../../alloc/heap.zig");
+
+const Payload = struct { channel: *Channel, sel: DriveSel };
+
+fn transfer(
+    vnode: *vfs.Vnode,
+    data: []u8,
+    dir_p: vfs.Vnode.Direction,
+    offset: usize,
+) vfs.Vnode.TransferError!void {
+    const dir: TransferDir = switch (dir_p) {
+        .read => .read,
+        .write => .write,
+    };
+    const payload: *Payload = @ptrCast(@alignCast(vnode.data.file.payload));
+    const sector_align = std.mem.Alignment.fromByteUnits(sector_size);
+    const lba_start = offset / sector_size;
+
+    const data_start = sector_align.forward(offset);
+    const data_end = sector_align.backward(offset + data.len);
+    const use_data = data_end > data_start;
+
+    const pre_start = sector_align.backward(offset);
+    const pre_end = data_start;
+    const use_pre = pre_end > pre_start;
+
+    const post_start = data_end;
+    const post_end = sector_align.forward(offset + data.len);
+    const use_post = post_end > post_start and post_start != pre_start;
+
+    const gpa = heap.mod.data() catch return error.CriticalSystemFailure;
+    const extra_bfrs: [][sector_size]u8 = gpa.alloc(
+        [sector_size]u8,
+        @as(
+            usize,
+            if (use_pre) 1 else 0,
+        ) + @as(
+            usize,
+            if (use_post) 1 else 0,
+        ),
+    ) catch return error.CriticalSystemFailure;
+    defer gpa.free(extra_bfrs);
+
+    switch (dir) {
+        .read => {
+            var bfrs: [][]u8 = gpa.alloc(
+                []u8,
+                extra_bfrs.len + @as(usize, if (use_data) 1 else 0),
+            ) catch return error.CriticalSystemFailure;
+            defer gpa.free(bfrs);
+
+            var idx: usize = 0;
+            if (use_pre) {
+                bfrs[idx] = &extra_bfrs[0];
+                idx += 1;
+            }
+            if (use_data) {
+                bfrs[idx] = data[data_start - offset .. data_end - offset];
+                idx += 1;
+            }
+            if (use_post) {
+                bfrs[idx] = &extra_bfrs[extra_bfrs.len - 1];
+                idx += 1;
+            }
+
+            doDMA(
+                payload.channel,
+                payload.sel,
+                bfrs,
+                .read,
+                @intCast(lba_start),
+            ) catch |err| switch (err) {
+                error.IOFailed => return error.IOFailed,
+                else => return error.CriticalSystemFailure,
+            };
+
+            if (use_pre) {
+                const len = @min(data.len, data_start - offset);
+                @memcpy(
+                    data[0..len],
+                    extra_bfrs[0][offset - pre_start ..][0..len],
+                );
+            }
+            if (use_post) {
+                @memcpy(
+                    data[data_end - offset ..],
+                    extra_bfrs[extra_bfrs.len - 1][0 .. (offset + data.len) % sector_size],
+                );
+            }
+        },
+        .write => std.debug.panic("ATA write unsupported", .{}),
+    }
+}
+
+const InitError = CommandError || std.mem.Allocator.Error;
+
+fn initDrive(
+    channel: *Channel,
+    sel: DriveSel,
+    prdt_phys: [*]align(paging.page_size) u8,
+    root: *vfs.Vnode,
+) InitError!void {
+    const identify_info = try identify(channel.main, channel.control, sel);
+    const info = identify_info orelse return;
+    channel.master = .{ .info = info };
+    channel.busmaster_reg.write(
+        8,
+        getBusmasterOffset(sel, .prdt_lowest),
+        @truncate(@intFromPtr(prdt_phys)),
+    );
+    channel.busmaster_reg.write(
+        8,
+        getBusmasterOffset(sel, .prdt_low),
+        @truncate(@intFromPtr(prdt_phys) >> 8),
+    );
+    channel.busmaster_reg.write(
+        8,
+        getBusmasterOffset(sel, .prdt_high),
+        @truncate(@intFromPtr(prdt_phys) >> 16),
+    );
+    channel.busmaster_reg.write(
+        8,
+        getBusmasterOffset(sel, .prdt_highest),
+        @truncate(@intFromPtr(prdt_phys) >> 24),
+    );
+
+    const payload = try (try heap.mod.data()).create(Payload);
+    payload.* = .{
+        .channel = channel,
+        .sel = sel,
+    };
+
+    var node: vfs.Vnode = .{
+        .data = .{
+            .file = .{
+                .payload = @ptrCast(payload),
+                .transfer = transfer,
+            },
+        },
+    };
+    try root.data.directory.children.put("sda0", node);
+    var meow: [700]u8 = undefined;
+    node.data.file.transfer(&node, &meow, .read, 0x100050) catch unreachable;
+    console.hexdump(&meow);
+}
+
 fn initChannel(
     main: io.Port,
     control: io.Port,
@@ -162,7 +309,7 @@ fn initChannel(
         primary,
         secondary,
     },
-) CommandError!void {
+) InitError!void {
     const prdt_phys: [*]align(paging.page_size) u8 = try pmm.pmmAllocLow(
         prdt_size,
     );
@@ -175,7 +322,7 @@ fn initChannel(
         .transfer_size = 0,
         .last_entry = false,
     });
-    var channel: Channel = .{
+    const channel: Channel = .{
         .main = main,
         .control = control,
         .busmaster_reg = busmaster_reg,
@@ -185,64 +332,27 @@ fn initChannel(
         .active = null,
         .status = undefined,
     };
-
-    // Software reset
-    io.out(8, channel.control + @intFromEnum(RegisterControl.status_cmd), 0x4);
-    for (0..100) |_| _ = io.in(8, channel.control + @intFromEnum(RegisterControl.status_cmd));
-    io.out(8, channel.control + @intFromEnum(RegisterControl.status_cmd), 0x0);
-
-    const master_info = try identify(main, control, .master);
-    if (master_info) |info| {
-        channel.master = .{ .info = info };
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.master, .prdt_lowest),
-            @truncate(@intFromPtr(prdt_phys)),
-        );
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.master, .prdt_low),
-            @truncate(@intFromPtr(prdt_phys) >> 8),
-        );
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.master, .prdt_high),
-            @truncate(@intFromPtr(prdt_phys) >> 16),
-        );
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.master, .prdt_highest),
-            @truncate(@intFromPtr(prdt_phys) >> 24),
-        );
-    }
-    const slave_info = try identify(main, control, .slave);
-    if (slave_info) |info| {
-        channel.slave = .{ .info = info };
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.slave, .prdt_lowest),
-            @truncate(@intFromPtr(prdt_phys)),
-        );
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.slave, .prdt_low),
-            @truncate(@intFromPtr(prdt_phys) >> 8),
-        );
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.slave, .prdt_high),
-            @truncate(@intFromPtr(prdt_phys) >> 16),
-        );
-        channel.busmaster_reg.write(
-            8,
-            getBusmasterOffset(.slave, .prdt_highest),
-            @truncate(@intFromPtr(prdt_phys) >> 24),
-        );
-    }
     switch (which) {
         .primary => channel_primary = channel,
         .secondary => channel_secondary = channel,
     }
+
+    // Software reset
+    io.out(8, channel.control + @intFromEnum(RegisterControl.status_cmd), 0x4);
+    for (0..100) |_| _ = io.in(8, channel.control + @intFromEnum(
+        RegisterControl.status_cmd,
+    ));
+    io.out(8, channel.control + @intFromEnum(RegisterControl.status_cmd), 0x0);
+
+    const root = try vfs.mod.data_ref();
+    try initDrive(&(switch (which) {
+        .primary => channel_primary,
+        .secondary => channel_secondary,
+    }.?), .master, prdt_phys, root);
+    try initDrive(&(switch (which) {
+        .primary => channel_primary,
+        .secondary => channel_secondary,
+    }.?), .slave, prdt_phys, root);
 }
 
 const TransferDir = enum(u1) { write, read };
@@ -284,138 +394,162 @@ const frames = @import("../../alloc/frames.zig");
 
 fn fillPRDT(
     channel: *const Channel,
-    data: []u8,
+    bfrs: []const []u8,
     dir: TransferDir,
-) virtual.MapError!usize {
+) virtual.MapError!struct {
+    bfrs: usize,
+    offset: usize,
+    bytes: usize,
+} {
     var i: usize = 0;
-
-    var last_paddr: ?u32 = null;
-
+    var bfrs_consumed: usize = 0;
     var offset: usize = 0;
-    var remaining_len: usize = data.len;
+    var bytes: usize = 0;
 
-    var remap_len: usize = 0;
-    const max_remap_len: usize = 0x10000;
+    for (bfrs) |data| multi: {
+        var last_paddr: ?u32 = null;
+        var remaining_len: usize = data.len;
 
-    var seg_len: u16 = @intCast(@min(remaining_len, paging.page_size));
+        var remap_len: usize = 0;
+        const max_remap_len: usize = 0x10000;
 
-    const max_entry_cnt = paging.page_size / @sizeOf(PRD);
+        var seg_len: u16 = @intCast(@min(remaining_len, paging.page_size));
 
-    while (remaining_len > 0) : ({
-        offset += seg_len;
-        remaining_len -= seg_len;
-        if (i == max_entry_cnt) break;
-        if (i > max_entry_cnt) unreachable;
-        seg_len = @min(remaining_len, paging.page_size);
-    }) {
-        const paddr: usize = @intFromPtr(paging.getPageMapping(
-            @ptrFromInt(paging.page_align.backward(
-                @intFromPtr(data.ptr + offset),
-            )),
-        ) orelse std.debug.panic(
-            "unmapped buffer passed to ATA DMA operation",
-            .{},
-        )) + @intFromPtr(data.ptr + offset) % paging.page_size;
-        const paddr_low: u32 = @truncate(paddr);
+        const max_entry_cnt = paging.page_size / @sizeOf(PRD);
 
-        const paddr_valid = paddr_low == paddr;
+        while (remaining_len > 0) : ({
+            offset += seg_len;
+            remaining_len -= seg_len;
+            if (i == max_entry_cnt) break :multi;
+            if (i > max_entry_cnt) unreachable;
+            seg_len = @min(remaining_len, paging.page_size);
+        }) {
+            const paddr: usize = @intFromPtr(paging.getPageMapping(
+                @ptrFromInt(paging.page_align.backward(
+                    @intFromPtr(data.ptr + offset),
+                )),
+            ) orelse std.debug.panic(
+                "unmapped buffer passed to ATA DMA operation",
+                .{},
+            )) + (@intFromPtr(data.ptr + offset) % paging.page_size);
+            const paddr_low: u32 = @truncate(paddr);
 
-        if (remap_len > max_remap_len) unreachable;
+            const paddr_valid = paddr_low == paddr;
 
-        if (remap_len > 0 and (paddr_valid or remap_len == max_remap_len or i == max_entry_cnt - 1)) {
-            const pg_cnt = (remap_len + paging.page_size - 1) / remap_len;
-            const phys = try pmm.pmmAllocLow(pg_cnt * paging.page_size);
-            errdefer pmm.pmmFree(@intFromPtr(phys), pg_cnt * paging.page_size);
-            if (dir == .write) {
+            if (remap_len > max_remap_len) unreachable;
+
+            if (remap_len > 0 and (paddr_valid or remap_len == max_remap_len or i == max_entry_cnt - 1)) {
+                const pg_cnt = (remap_len + paging.page_size - 1) / remap_len;
+                const phys = try pmm.pmmAllocLow(pg_cnt * paging.page_size);
+                errdefer pmm.pmmFree(
+                    @intFromPtr(phys),
+                    pg_cnt * paging.page_size,
+                );
+                if (dir == .write) {
+                    const virt = try frames.frameAllocContig(pg_cnt);
+                    defer for (0..pg_cnt) |j| frames.frameFree(
+                        @intFromPtr(virt.ptr) + j * paging.page_size,
+                    );
+                    const vr: virtual.Vregion = .{
+                        .paddr = phys,
+                        .vaddr = virt.ptr,
+                        .pg_cnt = pg_cnt,
+                        .flags = .{},
+                    };
+                    try paging.mapRegion(&vr);
+                    @memcpy(
+                        virt[0..remap_len],
+                        virt[offset - remap_len .. offset],
+                    );
+                }
+                channel.prdt[i] = .{
+                    .buf_paddr = @intCast(@intFromPtr(phys)),
+                    .transfer_size = @truncate(remap_len),
+                    .last_entry = false,
+                };
+                i += 1;
+                last_paddr = null;
+            }
+            if (!paddr_valid) {
+                remap_len += seg_len;
+                continue;
+            }
+            if (last_paddr) |last| {
+                // 0 = 0x10000
+                if (last + paging.page_size == paddr and channel.prdt[i - 1].transfer_size > 0) {
+                    channel.prdt[i - 1].transfer_size += seg_len;
+                    continue;
+                }
+            }
+            channel.prdt[i] = .{
+                .transfer_size = seg_len,
+                .buf_paddr = paddr_low,
+                .last_entry = false,
+            };
+            last_paddr = paddr_low;
+            i += 1;
+        }
+        bfrs_consumed += 1;
+        bytes += offset;
+        offset = 0;
+    }
+    bytes += offset;
+    channel.prdt[i - 1].last_entry = true;
+    return .{
+        .bfrs = bfrs_consumed,
+        .offset = offset,
+        .bytes = bytes,
+    };
+}
+
+fn cleanupPRDT(
+    channel: *Channel,
+    bfrs: []const []u8,
+    dir: TransferDir,
+) virtual.MapError!void {
+    var i: usize = 0;
+    var prd: PRD = channel.prdt[i];
+    for (bfrs) |data| multi: {
+        var offset: usize = 0;
+        while (offset < data.len) : ({
+            i += 1;
+            offset += prd.transfer_size;
+            if (prd.last_entry) break :multi;
+            prd = channel.prdt[i];
+        }) {
+            const paddr: usize = @intFromPtr(paging.getPageMapping(
+                @ptrFromInt(paging.page_align.backward(
+                    @intFromPtr(data.ptr + offset),
+                )),
+            ) orelse std.debug.panic(
+                "unmapped buffer passed to ATA DMA operation",
+                .{},
+            ));
+            if (i == paging.page_size / @sizeOf(PRD)) unreachable;
+            if (paddr <= std.math.maxInt(u32)) continue;
+            if (dir == .read) {
+                const pg_cnt = (prd.transfer_size + paging.page_size - 1) / paging.page_size;
                 const virt = try frames.frameAllocContig(pg_cnt);
                 defer for (0..pg_cnt) |j| frames.frameFree(
                     @intFromPtr(virt.ptr) + j * paging.page_size,
                 );
                 const vr: virtual.Vregion = .{
-                    .paddr = phys,
+                    .paddr = @ptrFromInt(paddr),
                     .vaddr = virt.ptr,
                     .pg_cnt = pg_cnt,
                     .flags = .{},
                 };
                 try paging.mapRegion(&vr);
-                @memcpy(virt[0..remap_len], virt[offset - remap_len .. offset]);
+                @memcpy(
+                    data[offset..][0..prd.transfer_size],
+                    virt[0..prd.transfer_size],
+                );
             }
-            channel.prdt[i] = .{
-                .buf_paddr = @intCast(@intFromPtr(phys)),
-                .transfer_size = @truncate(remap_len),
-                .last_entry = false,
-            };
-            i += 1;
-            last_paddr = null;
-        }
-        if (!paddr_valid) {
-            remap_len += seg_len;
-            continue;
-        }
-        if (last_paddr) |last| {
-            // 0 = 0x10000
-            if (last + paging.page_size == paddr and channel.prdt[i - 1].transfer_size > 0) {
-                channel.prdt[i - 1].transfer_size += seg_len;
-                continue;
-            }
-        }
-        channel.prdt[i] = .{
-            .transfer_size = seg_len,
-            .buf_paddr = paddr_low,
-            .last_entry = false,
-        };
-        last_paddr = paddr_low;
-        i += 1;
-    }
-    channel.prdt[i - 1].last_entry = true;
-    return data.len - remaining_len;
-}
-
-fn cleanupPRDT(
-    channel: *Channel,
-    data: []u8,
-    dir: TransferDir,
-) virtual.MapError!void {
-    var offset: usize = 0;
-    var i: usize = 0;
-    var prd: PRD = undefined;
-    while (offset < data.len) : ({
-        i += 1;
-        offset += prd.transfer_size;
-    }) {
-        const paddr: usize = @intFromPtr(paging.getPageMapping(
-            @ptrFromInt(paging.page_align.backward(
-                @intFromPtr(data.ptr + offset),
-            )),
-        ) orelse std.debug.panic(
-            "unmapped buffer passed to ATA DMA operation",
-            .{},
-        ));
-        if (i == paging.page_size / @sizeOf(PRD)) unreachable;
-        prd = channel.prdt[i];
-        if (paddr <= std.math.maxInt(u32)) continue;
-        if (dir == .read) {
-            const pg_cnt = (prd.transfer_size + paging.page_size - 1) / paging.page_size;
-            const virt = try frames.frameAllocContig(pg_cnt);
-            defer for (0..pg_cnt) |j| frames.frameFree(
-                @intFromPtr(virt.ptr) + j * paging.page_size,
-            );
-            const vr: virtual.Vregion = .{
-                .paddr = @ptrFromInt(paddr),
-                .vaddr = virt.ptr,
-                .pg_cnt = pg_cnt,
-                .flags = .{},
-            };
-            try paging.mapRegion(&vr);
-            @memcpy(
-                data[offset..][0..prd.transfer_size],
-                virt[0..prd.transfer_size],
+            pmm.pmmFree(
+                prd.buf_paddr,
+                paging.page_align.forward(prd.transfer_size),
             );
         }
-        pmm.pmmFree(
-            prd.buf_paddr,
-            paging.page_align.forward(prd.transfer_size),
-        );
     }
 }
 
@@ -440,18 +574,22 @@ fn sendDMACommands(
         .irq = true,
     })));
 
+    const lba_bits: u8 = 0xe0;
     var i: usize = 0;
     var sector_num = sector_num_p;
     while (true) : (i += 1) {
         const prd = channel.prdt[i];
-        const sector_count = prd.transfer_size / 512;
+        const sector_count = prd.transfer_size / sector_size;
 
         if (sector_num < 0xfffffff and sector_count < 0xff) {
             // LBA28 transfer
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.drive_select),
-                @intFromEnum(sel) + @as(u8, @intCast(sector_num >> 24)),
+                @intFromEnum(sel) + @as(
+                    u8,
+                    @intCast(sector_num >> 24),
+                ) | lba_bits,
             );
             io.out(
                 8,
@@ -488,12 +626,12 @@ fn sendDMACommands(
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.drive_select),
-                @intFromEnum(sel),
+                @intFromEnum(sel) | lba_bits,
             );
             io.out(
                 8,
                 channel.main + @intFromEnum(RegisterMain.sector_count),
-                @intCast(@as(u16, sector_count) >> @as(u4, 8)),
+                @intCast(@as(u16, @intCast(sector_count)) >> @as(u4, 8)),
             );
             io.out(
                 8,
@@ -553,7 +691,7 @@ fn sendDMACommands(
             return error.IOFailed;
         }
 
-        sector_num += prd.transfer_size / 512;
+        sector_num += prd.transfer_size / sector_size;
 
         if (prd.last_entry) {
             break;
@@ -575,27 +713,32 @@ const DMAError = CommandError || IOError;
 fn doDMA(
     channel: *Channel,
     sel: DriveSel,
-    data_p: []u8,
+    bfrs_p: [][]u8,
     dir: TransferDir,
     lba_p: u48,
 ) DMAError!void {
-    var data = data_p;
+    channel.active = sel;
     var lba = lba_p;
-    while (data.len > 0) {
-        const batch_len: usize = try fillPRDT(channel, data, dir);
+    var bfrs = bfrs_p;
+    while (bfrs.len > 0) {
+        const increment = try fillPRDT(channel, bfrs, dir);
 
         try sendDMACommands(
             channel,
             sel,
             dir,
-            lba + 1, // Starts at 1
+            lba,
         );
 
-        lba += @intCast(batch_len / sector_size);
+        lba += @intCast(increment.bytes / sector_size);
 
-        try cleanupPRDT(channel, data[0..batch_len], dir);
-        data = data[batch_len..];
+        try cleanupPRDT(channel, bfrs, dir);
+        bfrs = bfrs[increment.bfrs..];
+        if (bfrs.len > 0) {
+            bfrs[0] = bfrs[0][increment.offset..];
+        }
     }
+    channel.active = null;
 }
 
 var channel_primary: ?Channel = null;
@@ -615,6 +758,11 @@ fn handleISR(channel: *Channel) void {
     if (!status.irq) {
         return;
     }
+    const command: BusmasterCommandByte = @bitCast(channel.busmaster_reg.read(
+        8,
+        getBusmasterOffset(active, .command),
+    ));
+    console.print("command: {}\n", .{command});
     channel.status = if (status.err) .Failed else .Done;
 }
 

@@ -27,17 +27,27 @@ comptime {
     );
 }
 
+const std = @import("std");
+const modules = @import("../../modules.zig");
+
+const TaskCreationError = virtual.MapError || std.mem.Allocator.Error || modules.InitError;
+
 pub fn createKernelTask(
     entry_point: *const fn () void,
-) virtual.MapError!scheduler.Task {
+    gpa: std.mem.Allocator,
+) TaskCreationError!*scheduler.Task {
     const stack_cap = 0x10000;
-    const stack_phys = (try pmm.pmmAlloc(stack_cap))[0..stack_cap];
+    const stack_phys = (try pmm.alloc(stack_cap / paging.page_size))[0..stack_cap];
     const stack = try virtual.mapPhysObj(stack_phys, .{});
     // Return address plus 6 preserved registers
     const stack_size = 7 * @sizeOf(usize);
     @as(**const fn () void, @ptrFromInt(@intFromPtr(stack.ptr) + stack_cap - @sizeOf(usize))).* = entry_point;
-    return .{
+
+    const task = try scheduler.task_pool.create(gpa);
+    task.* = .{
         .esp = @intFromPtr(stack.ptr) + stack_cap - stack_size,
         .next = null,
+        .status = .init(.active),
     };
+    return task;
 }

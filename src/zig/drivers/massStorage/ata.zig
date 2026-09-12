@@ -154,100 +154,9 @@ const Channel = struct {
     status: enum { Pending, Done, Failed },
 };
 
-const vfs = @import("../../vfs.zig");
-const heap = @import("../../alloc/heap.zig");
+const blockDevice = @import("../../blockDevice.zig");
 
 const Payload = struct { channel: *Channel, sel: DriveSel };
-
-fn transfer(
-    vnode: *vfs.Vnode,
-    data: []u8,
-    dir_p: vfs.Vnode.Direction,
-    offset: usize,
-) vfs.Vnode.TransferError!void {
-    const dir: TransferDir = switch (dir_p) {
-        .read => .read,
-        .write => .write,
-    };
-    const payload: *Payload = @ptrCast(@alignCast(vnode.data.file.payload));
-    const sector_align = std.mem.Alignment.fromByteUnits(sector_size);
-    const lba_start = offset / sector_size;
-
-    const data_start = sector_align.forward(offset);
-    const data_end = sector_align.backward(offset + data.len);
-    const use_data = data_end > data_start;
-
-    const pre_start = sector_align.backward(offset);
-    const pre_end = data_start;
-    const use_pre = pre_end > pre_start;
-
-    const post_start = data_end;
-    const post_end = sector_align.forward(offset + data.len);
-    const use_post = post_end > post_start and post_start != pre_start;
-
-    const gpa = heap.mod.data() catch return error.CriticalSystemFailure;
-    const extra_bfrs: [][sector_size]u8 = gpa.alloc(
-        [sector_size]u8,
-        @as(
-            usize,
-            if (use_pre) 1 else 0,
-        ) + @as(
-            usize,
-            if (use_post) 1 else 0,
-        ),
-    ) catch return error.CriticalSystemFailure;
-    defer gpa.free(extra_bfrs);
-
-    switch (dir) {
-        .read => {
-            var bfrs: [][]u8 = gpa.alloc(
-                []u8,
-                extra_bfrs.len + @as(usize, if (use_data) 1 else 0),
-            ) catch return error.CriticalSystemFailure;
-            defer gpa.free(bfrs);
-
-            var idx: usize = 0;
-            if (use_pre) {
-                bfrs[idx] = &extra_bfrs[0];
-                idx += 1;
-            }
-            if (use_data) {
-                bfrs[idx] = data[data_start - offset .. data_end - offset];
-                idx += 1;
-            }
-            if (use_post) {
-                bfrs[idx] = &extra_bfrs[extra_bfrs.len - 1];
-                idx += 1;
-            }
-
-            doDMA(
-                payload.channel,
-                payload.sel,
-                bfrs,
-                .read,
-                @intCast(lba_start),
-            ) catch |err| switch (err) {
-                error.IOFailed => return error.IOFailed,
-                else => return error.CriticalSystemFailure,
-            };
-
-            if (use_pre) {
-                const len = @min(data.len, data_start - offset);
-                @memcpy(
-                    data[0..len],
-                    extra_bfrs[0][offset - pre_start ..][0..len],
-                );
-            }
-            if (use_post) {
-                @memcpy(
-                    data[data_end - offset ..],
-                    extra_bfrs[extra_bfrs.len - 1][0 .. (offset + data.len) % sector_size],
-                );
-            }
-        },
-        .write => std.debug.panic("ATA write unsupported", .{}),
-    }
-}
 
 const InitError = CommandError || std.mem.Allocator.Error;
 
@@ -255,7 +164,7 @@ fn initDrive(
     channel: *Channel,
     sel: DriveSel,
     prdt_phys: [*]align(paging.page_size) u8,
-    root: *vfs.Vnode,
+    gpa: std.mem.Allocator,
 ) InitError!void {
     const identify_info = try identify(channel.main, channel.control, sel);
     const info = identify_info orelse return;
@@ -281,21 +190,21 @@ fn initDrive(
         @truncate(@intFromPtr(prdt_phys) >> 24),
     );
 
-    const payload = try (try heap.mod.data()).create(Payload);
-    payload.* = .{
+    const payload: Payload = .{
         .channel = channel,
         .sel = sel,
     };
-
-    const node: vfs.Vnode = .{
-        .data = .{
-            .file = .{
-                .payload = @ptrCast(payload),
-                .transfer = transfer,
-            },
-        },
+    const ATABlockDevice = blockDevice.BlockDevice(Payload, sector_size);
+    ATABlockDevice.new(
+        payload,
+        transfer,
+        null,
+        gpa,
+        "sda0",
+    ) catch |err| switch (err) {
+        error.FileAlreadyExists => unreachable,
+        else => |e| return e,
     };
-    try root.data.directory.children.put("sda0", node);
 }
 
 fn initChannel(
@@ -306,9 +215,10 @@ fn initChannel(
         primary,
         secondary,
     },
+    gpa: std.mem.Allocator,
 ) InitError!void {
-    const prdt_phys: [*]align(paging.page_size) u8 = try pmm.pmmAllocLow(
-        prdt_size,
+    const prdt_phys: [*]align(paging.page_size) u8 = try pmm.allocLow(
+        prdt_size / paging.page_size,
     );
     const prdt_virt: []PRD = @ptrCast(@alignCast(try virtual.mapPhysObj(
         prdt_phys[0..prdt_size],
@@ -341,17 +251,18 @@ fn initChannel(
     ));
     io.out(8, channel.control + @intFromEnum(RegisterControl.status_cmd), 0x0);
 
-    const root = try vfs.mod.data_ref();
     try initDrive(&(switch (which) {
         .primary => channel_primary,
         .secondary => channel_secondary,
-    }.?), .master, prdt_phys, root);
+    }.?), .master, prdt_phys, gpa);
     try initDrive(&(switch (which) {
         .primary => channel_primary,
         .secondary => channel_secondary,
-    }.?), .slave, prdt_phys, root);
+    }.?), .slave, prdt_phys, gpa);
 }
 
+// Each mass storage driver must implement their own direction enum if they
+// wish to have a well-defined bit value.
 const TransferDir = enum(u1) { write, read };
 
 const RegisterBusmaster = enum(u16) {
@@ -437,19 +348,14 @@ fn fillPRDT(
 
             if (remap_len > 0 and (paddr_valid or remap_len == max_remap_len or i == max_entry_cnt - 1)) {
                 const pg_cnt = (remap_len + paging.page_size - 1) / remap_len;
-                const phys = try pmm.pmmAllocLow(pg_cnt * paging.page_size);
-                errdefer pmm.pmmFree(
-                    @intFromPtr(phys),
-                    pg_cnt * paging.page_size,
-                );
+                const phys = try pmm.allocLow(pg_cnt);
+                errdefer pmm.free(phys, pg_cnt);
                 if (dir == .write) {
-                    const virt = try frames.frameAllocContig(pg_cnt);
-                    defer for (0..pg_cnt) |j| frames.frameFree(
-                        @intFromPtr(virt.ptr) + j * paging.page_size,
-                    );
+                    const virt = try frames.allocContig(pg_cnt);
+                    defer frames.free(virt, pg_cnt);
                     const vr: virtual.Vregion = .{
                         .paddr = phys,
-                        .vaddr = virt.ptr,
+                        .vaddr = virt,
                         .pg_cnt = pg_cnt,
                         .flags = .{},
                     };
@@ -526,13 +432,11 @@ fn cleanupPRDT(
             if (paddr <= std.math.maxInt(u32)) continue;
             if (dir == .read) {
                 const pg_cnt = (prd.transfer_size + paging.page_size - 1) / paging.page_size;
-                const virt = try frames.frameAllocContig(pg_cnt);
-                defer for (0..pg_cnt) |j| frames.frameFree(
-                    @intFromPtr(virt.ptr) + j * paging.page_size,
-                );
+                const virt = try frames.allocContig(pg_cnt);
+                defer frames.free(virt, pg_cnt);
                 const vr: virtual.Vregion = .{
                     .paddr = @ptrFromInt(paddr),
-                    .vaddr = virt.ptr,
+                    .vaddr = virt,
                     .pg_cnt = pg_cnt,
                     .flags = .{},
                 };
@@ -542,10 +446,9 @@ fn cleanupPRDT(
                     virt[0..prd.transfer_size],
                 );
             }
-            pmm.pmmFree(
-                prd.buf_paddr,
-                paging.page_align.forward(prd.transfer_size),
-            );
+            pmm.free(@ptrFromInt(prd.buf_paddr), paging.page_align.forward(
+                prd.transfer_size,
+            ) / paging.page_size);
         }
     }
 }
@@ -708,6 +611,9 @@ fn doDMA(
     var bfrs = bfrs_p;
     while (bfrs.len > 0) {
         const increment = try fillPRDT(channel, bfrs, dir);
+        if (increment.bytes % sector_size > 0) {
+            std.debug.panic("PRDT does not end at a sector boundary!", .{});
+        }
 
         try sendDMACommands(
             channel,
@@ -726,6 +632,41 @@ fn doDMA(
         }
     }
     channel.active = null;
+}
+
+const vfs = @import("../../vfs.zig");
+
+fn transfer(
+    payload: Payload,
+    bfrs: [][]u8,
+    dir: vfs.Vnode.Direction,
+    lba: u64,
+) vfs.Vnode.TransferError!void {
+    return doDMA(
+        payload.channel,
+        payload.sel,
+        bfrs,
+        switch (dir) {
+            .read => .read,
+            .write => .write,
+        },
+        trunc: {
+            const truncated: u48 = @truncate(lba);
+            if (truncated != lba) return error.IOFailed;
+            break :trunc truncated;
+        },
+    ) catch |err| switch (err) {
+        error.CriticalSystemFailure,
+        error.InitializationFailure,
+        error.NoVirtFrames,
+        error.NoPhysMem,
+        => error.CriticalSystemFailure,
+        error.Unsupported => scheduler.fail(
+            "ATA driver used when unsupported",
+            .{},
+        ),
+        else => |e| e,
+    };
 }
 
 var channel_primary: ?Channel = null;
@@ -764,6 +705,7 @@ fn isrSecondary() callconv(idt.int_callconv) void {
 }
 
 fn init(dev: *pci.PCIDev) void {
+    const heap = @import("../../alloc/heap.zig");
     const ATAProgIf = packed struct {
         primary_pci: bool,
         primary_switch: bool,
@@ -789,6 +731,7 @@ fn init(dev: *pci.PCIDev) void {
 
     const prog_if: ATAProgIf = @bitCast(dev.class.prog_if);
     _ = init: {
+        const gpa = heap.mod.data() catch |err| break :init err;
         const active_cpu = cpu.getActiveCPU() catch |err| break :init err;
         if (!prog_if.primary_pci) {
             const vec = interrupts.alloc(isrPrimary) catch |err| break :init err;
@@ -804,6 +747,7 @@ fn init(dev: *pci.PCIDev) void {
                 0x3f6,
                 busmaster_reg.enhance(8) catch |err| break :init err,
                 .primary,
+                gpa,
             ) catch |err| break :init err;
         }
         if (!prog_if.secondary_pci) {
@@ -833,6 +777,7 @@ fn init(dev: *pci.PCIDev) void {
                 0x376,
                 busmaster_secondary.enhance(8) catch |err| break :init err,
                 .primary,
+                gpa,
             ) catch |err| break :init err;
         }
     } catch |err| std.debug.panic(

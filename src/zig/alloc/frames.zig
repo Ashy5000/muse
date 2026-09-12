@@ -15,39 +15,46 @@ const Payload = struct {
 
 pub const FrameAllocError = error{NoVirtFrames} || modules.InitError;
 
-/// Allocates a page-sized chunk of virtual memory, which may or may not be
-/// mapped to a physical page.
-pub fn frameAlloc() FrameAllocError![]align(paging.page_size) u8 {
+pub fn alloc() FrameAllocError![*]align(paging.page_size) u8 {
     const payload = try mod.data();
     const idx: usize = bitmaps.bitmapAlloc(
         payload.bitmap,
     ) orelse return error.FrameAllocNoMem;
-    return payload.start + (idx * paging.page_size);
+    return @alignCast(payload.start + (idx * paging.page_size));
 }
 
-/// Allocates `cnt` contiguous page-sized chunks of virtual memory, which
-/// may or may not be mapped to physical pages.
-pub fn frameAllocContig(cnt: usize) FrameAllocError![]align(paging.page_size) u8 {
+pub fn allocContig(cnt: usize) FrameAllocError![*]align(paging.page_size) u8 {
     const payload = try mod.data();
     const idx: usize = bitmaps.bitmapAllocContig(
         payload.bitmap,
         cnt,
     ) orelse return error.NoVirtFrames;
-    return @alignCast(
-        (payload.start + (idx * paging.page_size))[0 .. cnt * paging.page_size],
-    );
+    return @alignCast(payload.start + (idx * paging.page_size));
 }
 
-/// Frees a page-sized chunk of virtual memory, not modifying its page mapping.
-pub fn frameFree(start: usize) void {
-    const payload: *Payload = &mod.payload.?; // Page being freed must be allocated, so module must be inited.
-    const idx = (start - @intFromPtr(payload.start)) / paging.page_size;
-    bitmaps.bitmapSet(payload.bitmap, idx, false);
+pub fn setStatus(
+    start: [*]align(paging.page_size) u8,
+    cnt: usize,
+    in_use: bool,
+) modules.InitError!void {
+    const payload = try mod.data();
+    const idx = (@intFromPtr(start) - @intFromPtr(
+        payload.start,
+    )) / paging.page_size;
+    for (0..cnt) |i| {
+        bitmaps.bitmapSet(payload.bitmap, idx + i, in_use);
+    }
 }
+
+pub fn free(start: [*]align(paging.page_size) u8, cnt: usize) void {
+    setStatus(start, cnt, false) catch unreachable;
+}
+
+const multiboot = @import("../multiboot.zig");
 
 fn init() modules.InitError!Payload {
     const trampoline_region = try elf.mod.data();
-    const start: usize = std.mem.Alignment.forward(paging.page_align, @intFromPtr(
+    const start: usize = paging.page_align.forward(@intFromPtr(
         trampoline_region.vaddr + trampoline_region.pg_cnt * paging.page_size,
     ));
     const end: usize = start + paging.page_size * 4096;
@@ -59,10 +66,18 @@ fn init() modules.InitError!Payload {
     ) catch return error.InitializationFailure;
     @memset(bitmap, 0);
 
-    return .{
+    const payload: Payload = .{
         .start = @ptrFromInt(start),
         .bitmap = bitmap,
     };
+    mod.payload = payload;
+    const multiboot_vr = (try multiboot.mod.data()).multiboot_vr;
+    setStatus(
+        @ptrCast(multiboot_vr.vaddr),
+        multiboot_vr.pg_cnt,
+        true,
+    ) catch unreachable;
+    return payload;
 }
 
 /// The frames module, which initializes an allocator for allocating virtual

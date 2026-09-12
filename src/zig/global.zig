@@ -4,7 +4,7 @@ const bitmaps = @import("utils/bitmaps.zig");
 const paging = @import("arch.zig").paging;
 
 pub const Region = struct {
-    start: usize,
+    start: [*]allowzero align(paging.page_size) u8,
     pg_cnt: usize,
     bitmaps: ?[pmm.tier_cnt][]bitmaps.BitmapUnit,
 };

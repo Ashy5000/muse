@@ -19,7 +19,7 @@ pub const Vec = std.math.Log2Int(u256);
 pub const AllocError = error{NoAvailableIRQs} || modules.InitError;
 
 pub fn alloc(isr: ISR) AllocError!Vec {
-    const bitmap = try mod.data_ref();
+    const bitmap = try mod.dataRef();
     for (0..256) |i| {
         const vec: Vec = @intCast(i);
         if ((bitmap.* >> vec) & 0x1 == 0) {

@@ -4,9 +4,9 @@ pub const Vnode = struct {
     pub const TransferError = error{ CriticalSystemFailure, IOFailed };
     pub const Direction = enum { read, write };
 
+    payload: *anyopaque,
     data: union(enum) {
         file: struct {
-            payload: *anyopaque,
             transfer: *const fn (
                 vnode: *Vnode,
                 data: []u8,
@@ -16,7 +16,6 @@ pub const Vnode = struct {
         },
         directory: struct {
             children: std.StringHashMap(Vnode),
-            payload: *anyopaque,
         },
     },
 };
@@ -27,18 +26,18 @@ fn init() modules.InitError!Vnode {
     const heap = @import("alloc/heap.zig");
     const gpa = try heap.mod.data();
     var root: Vnode = .{
+        .payload = undefined,
         .data = .{
             .directory = .{
                 .children = .init(gpa),
-                .payload = undefined,
             },
         },
     };
     root.data.directory.children.put("dev", .{
+        .payload = undefined,
         .data = .{
             .directory = .{
                 .children = .init(gpa),
-                .payload = undefined,
             },
         },
     }) catch return error.CriticalSystemFailure;

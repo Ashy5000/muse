@@ -107,11 +107,14 @@ pub const LAPICInitError = modules.InitError || std.mem.Allocator.Error;
 pub fn initLocalAPIC(gpa: std.mem.Allocator) LAPICInitError!void {
     const lapic_regs = try mod.data();
     lapic_regs.spurious_int.apic_software_enable = true;
+    var task = try gpa.create(scheduler.Task);
+    task.status.raw = .active;
+    task.next = null;
     try cpu.cpus.append(gpa, .{
         .lapic_id = @intCast(lapic_regs.lapic_id),
         .queue = .{
-            .sync_status = .available,
-            .active = try gpa.create(scheduler.Task),
+            .sync_status = .init(.available),
+            .active = task,
             .list = null,
         },
     });

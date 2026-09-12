@@ -15,9 +15,12 @@ pub fn init() modules.InitError!*allowzero align(paging.page_size) global.CoreIn
             entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);
             continue;
         }
+        const start: usize = paging.page_align.forward(entry.addr);
         info.regions[idx] = .{
-            .start = @intCast(entry.addr),
-            .pg_cnt = @intCast(entry.len / paging.page_size),
+            .start = @ptrFromInt(start),
+            .pg_cnt = @intCast(
+                (entry.addr + entry.len - start) / paging.page_size,
+            ),
             .bitmaps = null,
         };
         entry = @ptrFromInt(@intFromPtr(entry) + tag.entry_size);

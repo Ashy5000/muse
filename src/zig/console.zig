@@ -21,7 +21,7 @@ fn maybeScroll(cons: *Console) display.DrawError!void {
 const PrintError = display.DrawError || modules.InitError;
 
 fn printChar(char: u8) PrintError!void {
-    const cons = try mod.data_ref();
+    const cons = try mod.dataRef();
     io.out(8, 0xe9, char);
     if (char == '\n') {
         cons.x = 0;

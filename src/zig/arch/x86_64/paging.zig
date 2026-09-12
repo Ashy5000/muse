@@ -80,7 +80,7 @@ fn resolveTable(
         .addr_hi = 0,
         .exec_disable = false,
     } };
-    const table_paddr = try pmm.pmmAlloc(page_size);
+    const table_paddr = try pmm.alloc(1);
     const table: *[page_entries]PageEntry = clear_addr orelse @ptrCast(table_paddr);
     entry.int |= @intFromPtr(table_paddr);
     parent[idx] = entry;
@@ -328,7 +328,7 @@ pub fn getPageMapping(addr: [*]align(page_size) u8) ?[*]align(page_size) u8 {
     }).addr);
     const directory_entry: PageEntry = directory[vaddr.components.directory];
     if (!directory_entry.fields.present) return null;
-    
+
     if (directory_entry.fields.size)
         return @ptrFromInt(directory_entry.fields.addr_hi << 12);
     const table: *[page_entries]PageEntry = @ptrFromInt(@as(Vaddr, .{
@@ -347,7 +347,7 @@ pub fn getPageMapping(addr: [*]align(page_size) u8) ?[*]align(page_size) u8 {
 }
 
 pub fn init() MapError!void {
-    const pml2: *align(page_size) [page_entries]PageEntry = @ptrCast(try pmm.pmmAlloc(page_size));
+    const pml2: *align(page_size) [page_entries]PageEntry = @ptrCast(try pmm.alloc(1));
     @memset(pml2, .{ .int = 0 });
 
     const multiboot = @import("../../multiboot.zig");

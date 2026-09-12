@@ -30,7 +30,7 @@ pub fn Module(comptime T: type) type {
             }
         }
 
-        pub fn data_ref(self: *Self) InitError!*T {
+        pub fn dataRef(self: *Self) InitError!*T {
             if (self.err) |err| {
                 return err;
             }

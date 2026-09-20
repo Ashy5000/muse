@@ -10,6 +10,7 @@ const modules = @import("../modules.zig");
 
 const Payload = struct {
     start: [*]align(paging.page_size) u8,
+    pg_cnt: usize,
     bitmap: []bitmaps.BitmapUnit,
 };
 
@@ -38,11 +39,14 @@ pub fn setStatus(
     in_use: bool,
 ) modules.InitError!void {
     const payload = try mod.data();
-    const idx = (@intFromPtr(start) - @intFromPtr(
-        payload.start,
-    )) / paging.page_size;
-    for (0..cnt) |i| {
-        bitmaps.bitmapSet(payload.bitmap, idx + i, in_use);
+    const start_idx = (@intFromPtr(start) -| @intFromPtr(payload.start)) / paging.page_size;
+    const end = @intFromPtr(start) + cnt * paging.page_size;
+    const end_idx = @min(
+        payload.pg_cnt,
+        (end -| @intFromPtr(payload.start)) / paging.page_size,
+    );
+    for (start_idx..end_idx) |idx| {
+        bitmaps.bitmapSet(payload.bitmap, idx, in_use);
     }
 }
 
@@ -58,7 +62,8 @@ fn init() modules.InitError!Payload {
         trampoline_region.vaddr + trampoline_region.pg_cnt * paging.page_size,
     ));
     const end: usize = start + paging.page_size * 4096;
-    const bitmap_cnt: usize = ((end - start) / paging.page_size) / 8;
+    const pg_cnt = (end - start) / paging.page_size;
+    const bitmap_cnt: usize = pg_cnt / 8;
     const allocator = try heap.mod.data();
     const bitmap: []bitmaps.BitmapUnit = allocator.alloc(
         bitmaps.BitmapUnit,
@@ -68,6 +73,7 @@ fn init() modules.InitError!Payload {
 
     const payload: Payload = .{
         .start = @ptrFromInt(start),
+        .pg_cnt = pg_cnt,
         .bitmap = bitmap,
     };
     mod.payload = payload;

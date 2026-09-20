@@ -7,3 +7,6 @@ pub const drivers_timer = [_]*@import("subsystems/timer.zig").Driver{
 pub const drivers_pci = [_]*@import("subsystems/pci.zig").Driver{
     &@import("drivers/massStorage/ata.zig").driver_pci,
 };
+pub const drivers_partition = [_]*@import("subsystems/partition.zig").Driver{
+    &@import("drivers/partition/gpt.zig").driver_partition,
+};

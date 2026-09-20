@@ -12,7 +12,7 @@ const timer = @import("subsystems/timer.zig");
 const tick = @import("tick.zig");
 const contextSwitch = @import("arch.zig").contextSwitch;
 
-pub const panic = std.debug.FullPanic(panic_mod.crashed);
+// pub const panic = std.debug.FullPanic(panic_mod.crashed);
 
 export fn trampoline_main(multiboot_info: *multiboot.MultibootInfo, multiboot_magic: u32) callconv(.c) void {
     multiboot.config(multiboot_info, multiboot_magic);

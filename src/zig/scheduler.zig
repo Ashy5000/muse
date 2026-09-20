@@ -49,7 +49,6 @@ pub fn schedule() modules.InitError!void {
         if (new.next) |next| {
             list.next = next;
         } else {
-            console.print("1 task only.\n", .{});
             queue.list = null;
         }
         queue.active = new;
@@ -60,6 +59,7 @@ pub fn schedule() modules.InitError!void {
 }
 
 pub fn preempt() modules.InitError!void {
+    console.print("Preempting...\n", .{});
     const queue = &(try cpu.getActiveCPU()).queue;
     if (queue.sync_status.cmpxchgStrong(
         .available,

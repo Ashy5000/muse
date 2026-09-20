@@ -154,7 +154,7 @@ const Channel = struct {
     status: enum { Pending, Done, Failed },
 };
 
-const blockDevice = @import("../../blockDevice.zig");
+const BlockDevice = @import("../../BlockDevice.zig");
 
 const Payload = struct { channel: *Channel, sel: DriveSel };
 
@@ -190,17 +190,16 @@ fn initDrive(
         @truncate(@intFromPtr(prdt_phys) >> 24),
     );
 
-    const payload: Payload = .{
+    const payload = try gpa.create(Payload);
+    payload.* = .{
         .channel = channel,
         .sel = sel,
     };
-    const ATABlockDevice = blockDevice.BlockDevice(Payload, sector_size);
-    ATABlockDevice.new(
+    BlockDevice.new(
         payload,
         transfer,
         null,
         gpa,
-        "sda0",
     ) catch |err| switch (err) {
         error.FileAlreadyExists => unreachable,
         else => |e| return e,
@@ -637,11 +636,12 @@ fn doDMA(
 const vfs = @import("../../vfs.zig");
 
 fn transfer(
-    payload: Payload,
+    payload_opaque: *anyopaque,
     bfrs: [][]u8,
     dir: vfs.Vnode.Direction,
     lba: u64,
 ) vfs.Vnode.TransferError!void {
+    const payload: *Payload = @ptrCast(@alignCast(payload_opaque));
     return doDMA(
         payload.channel,
         payload.sel,

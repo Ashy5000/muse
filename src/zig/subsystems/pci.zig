@@ -348,7 +348,7 @@ fn scanPCIFunc(bus: u8, slot: u5, func: u3, allocator: std.mem.Allocator) std.me
     if (dev.type_byte.type == .bridge_pci_pci) {
         try scanPCIBus(dev.getSecondaryBus().?, allocator);
     }
-    console.print("{x:0>2}:{x:0>2}.{x} {s}: Vendor: {x}.", .{
+    console.print("{x:0>2}:{x:0>2}.{x} {s}: Vendor: {x}.\n", .{
         bus,
         slot,
         func,

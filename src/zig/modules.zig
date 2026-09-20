@@ -44,6 +44,7 @@ pub fn Module(comptime T: type) type {
             if (self.err) |err| {
                 return err;
             }
+            if (self.payload) |_| return;
             self.payload = self.init() catch |err| {
                 self.err = err;
                 return err;

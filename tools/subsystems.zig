@@ -28,6 +28,13 @@ const subsystems = [_]Subsystem{
             "drivers/massStorage/ata.zig",
         },
     },
+    .{
+        .root_name = "partition.zig",
+        .suffix = "partition",
+        .files = &.{
+            "drivers/partition/gpt.zig",
+        },
+    },
 };
 
 const Args = struct {

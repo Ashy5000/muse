@@ -314,13 +314,16 @@ fn fillPRDT(
     var bytes: usize = 0;
 
     for (bfrs) |data| multi: {
-        var last_paddr: ?u32 = null;
+        var last_paddr_end: ?u32 = null;
         var remaining_len: usize = data.len;
 
         var remap_len: usize = 0;
         const max_remap_len: usize = 0x10000;
 
-        var seg_len: u16 = @intCast(@min(remaining_len, paging.page_size));
+        var seg_len: u16 = @intCast(@min(
+            remaining_len,
+            paging.page_size - (@intFromPtr(data.ptr) + offset) % paging.page_size,
+        ));
 
         const max_entry_cnt = paging.page_size / @sizeOf(PRD);
 
@@ -370,16 +373,17 @@ fn fillPRDT(
                     .last_entry = false,
                 };
                 i += 1;
-                last_paddr = null;
+                last_paddr_end = null;
             }
             if (!paddr_valid) {
                 remap_len += seg_len;
                 continue;
             }
-            if (last_paddr) |last| {
+            if (last_paddr_end) |end| {
                 // 0 = 0x10000
-                if (last + paging.page_size == paddr and channel.prdt[i - 1].transfer_size > 0) {
+                if (end == paddr and channel.prdt[i - 1].transfer_size > 0) {
                     channel.prdt[i - 1].transfer_size += seg_len;
+                    last_paddr_end = paddr_low + seg_len;
                     continue;
                 }
             }
@@ -388,7 +392,7 @@ fn fillPRDT(
                 .buf_paddr = paddr_low,
                 .last_entry = false,
             };
-            last_paddr = paddr_low;
+            last_paddr_end = paddr_low + seg_len;
             i += 1;
         }
         bfrs_consumed += 1;

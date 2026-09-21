@@ -59,7 +59,6 @@ pub fn schedule() modules.InitError!void {
 }
 
 pub fn preempt() modules.InitError!void {
-    console.print("Preempting...\n", .{});
     const queue = &(try cpu.getActiveCPU()).queue;
     if (queue.sync_status.cmpxchgStrong(
         .available,

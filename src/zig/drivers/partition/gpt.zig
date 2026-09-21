@@ -1,3 +1,5 @@
+const GUID = [16]u8;
+
 const Header = extern struct {
     signature: [8]u8, // EFI PART
     revision: u32,
@@ -8,16 +10,16 @@ const Header = extern struct {
     lba_alt: u64,
     first_usable: u64,
     last_usable: u64,
-    disk_guid: [16]u8,
+    disk_guid: GUID,
     table_lba: u64,
     partition_count: u32,
-    entry_size: u64,
+    entry_size: u32,
     table_checksum: u32,
 };
 
 const Entry = extern struct {
-    type_guid: [16]u8,
-    part_guid: [16]u8,
+    type_guid: GUID,
+    part_guid: GUID,
     lba_start: u64,
     lba_end: u64,
     attrs: packed struct(u64) {
@@ -38,6 +40,7 @@ const BlockDevice = @import("../../BlockDevice.zig");
 
 fn init(dev: *BlockDevice) vfs.Vnode.TransferError!bool {
     const console = @import("../../console.zig");
+    const heap = @import("../../alloc/heap.zig");
     var header_bfr: [@sizeOf(Header)]u8 = undefined;
     _ = try dev.transferQueued(
         &header_bfr,
@@ -48,6 +51,7 @@ fn init(dev: *BlockDevice) vfs.Vnode.TransferError!bool {
         null,
     );
     var header: Header = @bitCast(header_bfr);
+    console.print("sig: {s}\n", .{header.signature});
     if (!std.mem.eql(u8, &header.signature, "EFI PART")) return false;
 
     const use_crc32 = false; // TianoCore seems to set the checksum to zero.
@@ -65,9 +69,35 @@ fn init(dev: *BlockDevice) vfs.Vnode.TransferError!bool {
         "Found GPT partition table with {} partitions.\n",
         .{header.partition_count},
     );
-    // const table_size: usize = @intCast(
-    //     header.partition_count * header.entry_size,
-    // );
+
+    const gpa = heap.mod.data() catch return error.CriticalSystemFailure;
+    const table_size: usize = @intCast(
+        header.partition_count * header.entry_size,
+    );
+    const table: []u8 = gpa.alloc(
+        u8,
+        table_size,
+    ) catch return error.CriticalSystemFailure;
+    _ = try dev.transferQueued(
+        table,
+        .read,
+        header.table_lba * sector_size,
+        .standard,
+        .immediate,
+        null,
+    );
+    for (0..header.partition_count) |i| {
+        const offset = i * header.entry_size;
+        const entry: *align(1) Entry = @ptrCast(table.ptr + offset);
+        if (std.mem.eql(
+            u8,
+            &entry.part_guid,
+            &@as([16]u8, @splat(0)),
+        )) continue;
+        console.hexdump(table[offset..][0..16]);
+        console.print("offset: {x}.", .{offset + header.table_lba * sector_size});
+        console.print("Type GUID: {x}.\n", .{entry.type_guid});
+    }
 
     return true;
 }

@@ -284,7 +284,6 @@ fn produceTransfer(
         ) catch return error.CriticalSystemFailure;
     }
     if (mode == .immediate) try scheduler.schedule();
-    err catch |e| return e;
     return res;
 }
 
@@ -328,6 +327,7 @@ fn runConsumer(self: *BlockDevice) noreturn {
         // Info only modified on recursive call, error is already recorded by
         // .complete()
         self.complete(@constCast(&info)) catch {};
+        console.print("completed.\n", .{});
         scheduler.push(info.task) catch |err| break :iter err;
     }) catch |err| {
         console.print("Block device consumer error: {}\n", .{err});
